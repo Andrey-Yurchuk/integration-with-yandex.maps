@@ -168,7 +168,8 @@ final class StoreOrganizationSourceTest extends TestCase
             ->where('organization.source_url', self::VALID_URL)
             ->where('organization.normalized_url', 'https://yandex.ru/maps/org/cafe_pushkin/123456789012/')
             ->where('organization.yandex_object_id', '123456789012')
-            ->where('organization.sync_status', OrganizationSyncStatus::Queued->value));
+            ->where('organization.sync_status', OrganizationSyncStatus::Queued->value)
+            ->where('reviews.meta.total', 0));
     }
 
     public function test_saving_valid_url_dispatches_sync_organization_job(): void

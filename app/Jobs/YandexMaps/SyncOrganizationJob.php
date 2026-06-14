@@ -195,6 +195,6 @@ final class SyncOrganizationJob implements ShouldQueue
             return $exception->getMessage();
         }
 
-        return "Organization synchronization failed unexpectedly.";
+        return "Organization synchronization failed unexpectedly";
     }
 }

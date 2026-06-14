@@ -10,14 +10,22 @@ use App\Models\User;
 final class OrganizationRepository
 {
     /**
-     * Returns the user's latest organization record
+     * Returns the current organization for the authenticated user
      */
-    public function forUser(User $user): ?Organization
+    public function currentForUser(User $user): ?Organization
     {
         return Organization::query()
             ->where('user_id', $user->id)
             ->latest('id')
             ->first();
+    }
+
+    /**
+     * Returns the user's latest organization record
+     */
+    public function forUser(User $user): ?Organization
+    {
+        return $this->currentForUser($user);
     }
 
     /**
@@ -27,7 +35,7 @@ final class OrganizationRepository
      */
     public function saveSource(User $user, array $attributes): Organization
     {
-        $organization = $this->forUser($user);
+        $organization = $this->currentForUser($user);
 
         if ($organization === null) {
             return Organization::query()->create([

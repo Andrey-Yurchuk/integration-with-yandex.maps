@@ -12,15 +12,26 @@ use Illuminate\Support\Carbon;
 final class ReviewRepository
 {
     /**
-     * Returns organization reviews ordered by reviewed_at for UI pagination
+     * Returns paginated organization reviews ordered by reviewed_at for UI pagination
      */
-    public function paginate(Organization $organization, int $perPage = 50): LengthAwarePaginator
-    {
+    public function paginateForOrganization(
+        Organization $organization,
+        int $perPage = 50,
+        int $page = 1,
+    ): LengthAwarePaginator {
         return Review::query()
             ->where('organization_id', $organization->id)
             ->orderByDesc('reviewed_at')
             ->orderByDesc('id')
-            ->paginate($perPage);
+            ->paginate(perPage: $perPage, page: $page);
+    }
+
+    /**
+     * Returns organization reviews ordered by reviewed_at for UI pagination
+     */
+    public function paginate(Organization $organization, int $perPage = 50): LengthAwarePaginator
+    {
+        return $this->paginateForOrganization($organization, $perPage);
     }
 
     /**
