@@ -27,6 +27,18 @@ final class LoginRequest extends FormRequest
         ];
     }
 
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'email.required' => 'Email is required',
+            'email.email' => 'Provide a valid email address',
+            'password.required' => 'Password is required',
+        ];
+    }
+
     public function authenticate(): void
     {
         $this->ensureIsNotRateLimited();
@@ -35,7 +47,7 @@ final class LoginRequest extends FormRequest
             RateLimiter::hit($this->throttleKey());
 
             throw ValidationException::withMessages([
-                'email' => trans('auth.failed'),
+                'email' => 'These credentials do not match our records',
             ]);
         }
 
@@ -53,10 +65,7 @@ final class LoginRequest extends FormRequest
         $seconds = RateLimiter::availableIn($this->throttleKey());
 
         throw ValidationException::withMessages([
-            'email' => trans('auth.throttle', [
-                'seconds' => $seconds,
-                'minutes' => ceil($seconds / 60),
-            ]),
+            'email' => "Too many login attempts, please try again in {$seconds} seconds",
         ]);
     }
 
