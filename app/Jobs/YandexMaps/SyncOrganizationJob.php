@@ -42,10 +42,10 @@ final class SyncOrganizationJob implements ShouldQueue
     ): void {
         $lock = Cache::lock(
             $this->lockKey(),
-            (int) config("yandex-maps.timeout", 120),
+            (int) config('yandex-maps.timeout', 120),
         );
 
-        if (!$lock->get()) {
+        if (! $lock->get()) {
             $this->release(15);
 
             return;
@@ -79,14 +79,13 @@ final class SyncOrganizationJob implements ShouldQueue
                     );
 
                     $syncRuns->markSucceeded($syncRun, [
-                        "reviews_found" => count($parsed->reviews),
-                        "reviews_saved" => $reviewsSaved,
-                        "ratings_count" => $parsed->ratingsCount,
-                        "reviews_count" => $parsed->reviewsCount,
-                        "meta" => [
-                            "parser_version" =>
-                                $parsed->parserVersion ??
-                                config("yandex-maps.parser_version"),
+                        'reviews_found' => count($parsed->reviews),
+                        'reviews_saved' => $reviewsSaved,
+                        'ratings_count' => $parsed->ratingsCount,
+                        'reviews_count' => $parsed->reviewsCount,
+                        'meta' => [
+                            'parser_version' => $parsed->parserVersion ??
+                                config('yandex-maps.parser_version'),
                         ],
                     ]);
 
@@ -101,7 +100,7 @@ final class SyncOrganizationJob implements ShouldQueue
                     $syncRuns,
                 );
 
-                if (!$this->isDomainException($exception)) {
+                if (! $this->isDomainException($exception)) {
                     throw $exception;
                 }
             }
@@ -123,7 +122,7 @@ final class SyncOrganizationJob implements ShouldQueue
      */
     private function lockKey(): string
     {
-        return "yandex-maps-sync:" . $this->organizationId;
+        return 'yandex-maps-sync:'.$this->organizationId;
     }
 
     /**
@@ -148,7 +147,7 @@ final class SyncOrganizationJob implements ShouldQueue
                 $this->errorType($exception),
                 $this->errorMessage($exception),
                 [
-                    "exception" => $exception::class,
+                    'exception' => $exception::class,
                 ],
             );
 
@@ -177,12 +176,12 @@ final class SyncOrganizationJob implements ShouldQueue
     private function errorType(Throwable $exception): string
     {
         return match (true) {
-            $exception instanceof InvalidUrlException => "invalid_url",
-            $exception instanceof UnavailableException => "unavailable",
-            $exception instanceof BlockedException => "blocked",
-            $exception instanceof ChangedSchemaException => "changed_schema",
-            $exception instanceof ParserTimeoutException => "parser_timeout",
-            default => "unexpected",
+            $exception instanceof InvalidUrlException => 'invalid_url',
+            $exception instanceof UnavailableException => 'unavailable',
+            $exception instanceof BlockedException => 'blocked',
+            $exception instanceof ChangedSchemaException => 'changed_schema',
+            $exception instanceof ParserTimeoutException => 'parser_timeout',
+            default => 'unexpected',
         };
     }
 
@@ -195,6 +194,6 @@ final class SyncOrganizationJob implements ShouldQueue
             return $exception->getMessage();
         }
 
-        return "Organization synchronization failed unexpectedly";
+        return 'Organization synchronization failed unexpectedly';
     }
 }
