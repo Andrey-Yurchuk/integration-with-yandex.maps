@@ -4,5 +4,8 @@ use Illuminate\Support\Facades\Route;
 
 Route::redirect('/', '/login');
 
-Route::inertia('/login', 'Auth/Login');
-Route::inertia('/organization', 'Organizations/Show');
+Route::middleware('auth:sanctum')->group(function () {
+    Route::inertia('/organization', 'Organizations/Show')->name('organization');
+});
+
+require __DIR__.'/auth.php';
