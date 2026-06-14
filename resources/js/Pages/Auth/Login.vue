@@ -27,7 +27,7 @@ const submit = (): void => {
                     Sign in
                 </h1>
                 <p class="mt-2 text-sm text-slate-600">
-                    Use the seed account to access organization settings and reviews.
+                    Use the seed account to access organization settings and reviews
                 </p>
             </header>
 

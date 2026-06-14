@@ -1,93 +1,75 @@
 <script setup lang="ts">
+import OrganizationForm from '@/Components/OrganizationForm.vue';
+import OrganizationSummary from '@/Components/OrganizationSummary.vue';
+import Pagination from '@/Components/Pagination.vue';
+import ReviewList from '@/Components/ReviewList.vue';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
-import { Head, useForm } from '@inertiajs/vue3';
-import { computed, ref, watch } from 'vue';
+import type {
+    Organization,
+    PaginatedReviews,
+    SyncStatus,
+} from '@/types/domain';
+import { Head, router } from '@inertiajs/vue3';
+import { onUnmounted, ref, watch } from 'vue';
 
-type OrganizationPayload = {
-    id: number;
-    source_url: string;
-    normalized_url: string | null;
-    yandex_object_id: string | null;
-    sync_status: string;
-    title: string | null;
-    address: string | null;
-    rating: string | null;
-    ratings_count: number;
-    reviews_count: number;
-    last_sync_started_at: string | null;
-    last_sync_finished_at: string | null;
-    last_sync_error: string | null;
-};
-
-type ReviewPayload = {
-    id: number;
-    author_name: string;
-    author_avatar_url: string | null;
-    reviewed_at: string | null;
-    text: string | null;
-    rating: number | null;
-};
-
-type ReviewsPage = {
-    data: ReviewPayload[];
-    meta: {
-        current_page: number;
-        per_page: number;
-        total: number;
-        last_page: number;
-        from: number | null;
-        to: number | null;
-    };
-    links: {
-        next: string | null;
-        prev: string | null;
-    };
-};
+const POLL_INTERVAL_MS = 2500;
 
 const props = defineProps<{
-    organization: OrganizationPayload | null;
-    reviews: ReviewsPage;
+    organization: Organization | null;
+    reviews: PaginatedReviews;
 }>();
 
-const reviewsPage = ref<ReviewsPage>(props.reviews);
+const organization = ref<Organization | null>(props.organization);
+const reviews = ref<PaginatedReviews>(props.reviews);
 const reviewsLoading = ref(false);
 
-const form = useForm({
-    source_url: props.organization?.source_url ?? '',
-});
+let pollTimer: ReturnType<typeof setInterval> | null = null;
+let pollInFlight = false;
 
 watch(
-    () => props.organization?.source_url,
-    (sourceUrl) => {
-        if (sourceUrl !== undefined) {
-            form.source_url = sourceUrl;
-        }
+    () => props.organization,
+    (value) => {
+        organization.value = value;
     },
 );
 
 watch(
     () => props.reviews,
-    (reviews) => {
-        reviewsPage.value = reviews;
+    (value) => {
+        reviews.value = value;
     },
 );
 
-const syncStatusLabel = computed(() => {
-    const status = props.organization?.sync_status;
+const isActiveSyncStatus = (status: Organization['sync_status'] | null | undefined): boolean => {
+    return status === 'awaiting' || status === 'queued' || status === 'running';
+};
 
-    if (! status) {
-        return null;
+const stopPolling = (): void => {
+    if (pollTimer !== null) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+    }
+};
+
+const applySyncStatus = (status: SyncStatus): void => {
+    if (! organization.value || status.organization_id === null) {
+        return;
     }
 
-    return status.replaceAll('_', ' ');
-});
-
-const submit = (): void => {
-    form.post('/organization');
+    organization.value = {
+        ...organization.value,
+        sync_status: status.sync_status ?? organization.value.sync_status,
+        last_sync_started_at: status.last_sync_started_at,
+        last_sync_finished_at: status.last_sync_finished_at,
+        last_sync_error: status.last_sync_error,
+        rating: status.rating ?? organization.value.rating,
+        ratings_count: status.ratings_count ?? organization.value.ratings_count,
+        reviews_count: status.reviews_count ?? organization.value.reviews_count,
+    };
 };
 
 const loadReviewsPage = async (page: number): Promise<void> => {
-    if (reviewsLoading.value || page < 1) {
+    if (reviewsLoading.value || page < 1 || page > reviews.value.meta.last_page) {
         return;
     }
 
@@ -106,194 +88,101 @@ const loadReviewsPage = async (page: number): Promise<void> => {
             return;
         }
 
-        reviewsPage.value = await response.json() as ReviewsPage;
+        reviews.value = await response.json() as PaginatedReviews;
     } finally {
         reviewsLoading.value = false;
     }
 };
+
+const pollSyncStatus = async (): Promise<void> => {
+    if (pollInFlight) {
+        return;
+    }
+
+    pollInFlight = true;
+
+    try {
+        const response = await fetch('/organization/sync-status', {
+            headers: {
+                Accept: 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+            credentials: 'same-origin',
+        });
+
+        if (! response.ok) {
+            return;
+        }
+
+        const status = await response.json() as SyncStatus;
+
+        applySyncStatus(status);
+
+        if (status.sync_status === 'succeeded' || status.sync_status === 'failed') {
+            stopPolling();
+
+            router.reload({
+                only: ['organization', 'reviews'],
+                preserveScroll: true,
+            });
+        }
+    } finally {
+        pollInFlight = false;
+    }
+};
+
+const startPolling = (): void => {
+    if (pollTimer !== null) {
+        return;
+    }
+
+    void pollSyncStatus();
+
+    pollTimer = setInterval(() => {
+        void pollSyncStatus();
+    }, POLL_INTERVAL_MS);
+};
+
+watch(
+    () => organization.value?.sync_status,
+    (status) => {
+        if (isActiveSyncStatus(status)) {
+            startPolling();
+        } else {
+            stopPolling();
+        }
+    },
+    { immediate: true },
+);
+
+onUnmounted(() => {
+    stopPolling();
+});
 </script>
 
 <template>
     <Head title="Organization" />
 
     <AuthenticatedLayout title="Organization settings">
-        <section class="space-y-8">
-            <div class="rounded-lg border border-slate-200 bg-white p-6">
-                <h2 class="text-base font-semibold text-slate-900">
-                    Yandex Maps link
-                </h2>
+        <div class="space-y-6">
+            <OrganizationForm :organization="organization" />
 
-                <form
-                    class="mt-4 space-y-4"
-                    @submit.prevent="submit"
-                >
-                    <div>
-                        <label
-                            class="mb-1 block text-sm font-medium text-slate-700"
-                            for="source-url"
-                        >
-                            Organization URL
-                        </label>
-                        <input
-                            id="source-url"
-                            v-model="form.source_url"
-                            type="url"
-                            name="source_url"
-                            class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-slate-500 focus:outline-none"
-                            :class="{ 'border-red-500': form.errors.source_url }"
-                            placeholder="https://yandex.ru/maps/org/..."
-                        >
-                        <p
-                            v-if="form.errors.source_url"
-                            class="mt-1 text-sm text-red-600"
-                        >
-                            {{ form.errors.source_url }}
-                        </p>
-                    </div>
+            <OrganizationSummary :organization="organization" />
 
-                    <button
-                        type="submit"
-                        class="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-                        :disabled="form.processing"
-                    >
-                        {{ form.processing ? 'Saving…' : 'Save link' }}
-                    </button>
-                </form>
+            <div class="space-y-4">
+                <ReviewList
+                    :organization="organization"
+                    :reviews="reviews"
+                    :loading="reviewsLoading"
+                />
 
-                <dl
-                    v-if="organization"
-                    class="mt-6 space-y-3 border-t border-slate-200 pt-6 text-sm"
-                >
-                    <div v-if="organization.title">
-                        <dt class="font-medium text-slate-700">
-                            Organization
-                        </dt>
-                        <dd class="mt-1 text-slate-900">
-                            {{ organization.title }}
-                        </dd>
-                    </div>
-
-                    <div v-if="organization.address">
-                        <dt class="font-medium text-slate-700">
-                            Address
-                        </dt>
-                        <dd class="mt-1 text-slate-900">
-                            {{ organization.address }}
-                        </dd>
-                    </div>
-
-                    <div v-if="organization.rating !== null">
-                        <dt class="font-medium text-slate-700">
-                            Rating
-                        </dt>
-                        <dd class="mt-1 text-slate-900">
-                            {{ organization.rating }}
-                            <span class="text-slate-500">
-                                ({{ organization.ratings_count }} ratings, {{ organization.reviews_count }} reviews)
-                            </span>
-                        </dd>
-                    </div>
-
-                    <div>
-                        <dt class="font-medium text-slate-700">
-                            Sync status
-                        </dt>
-                        <dd class="mt-1 capitalize text-slate-900">
-                            {{ syncStatusLabel }}
-                        </dd>
-                    </div>
-
-                    <div v-if="organization.sync_status === 'failed' && organization.last_sync_error">
-                        <dt class="font-medium text-slate-700">
-                            Last sync error
-                        </dt>
-                        <dd class="mt-1 text-red-600">
-                            {{ organization.last_sync_error }}
-                        </dd>
-                    </div>
-                </dl>
+                <Pagination
+                    :meta="reviews.meta"
+                    :links="reviews.links"
+                    :loading="reviewsLoading"
+                    @page-change="loadReviewsPage"
+                />
             </div>
-
-            <div class="rounded-lg border border-slate-200 bg-white p-6">
-                <div class="flex items-center justify-between gap-4">
-                    <h2 class="text-base font-semibold text-slate-900">
-                        Reviews
-                    </h2>
-                    <p
-                        v-if="reviewsPage.meta.total > 0"
-                        class="text-sm text-slate-500"
-                    >
-                        {{ reviewsPage.meta.from }}–{{ reviewsPage.meta.to }} of {{ reviewsPage.meta.total }}
-                    </p>
-                </div>
-
-                <p
-                    v-if="reviewsPage.data.length === 0"
-                    class="mt-2 text-sm text-slate-600"
-                >
-                    No reviews in the database yet.
-                </p>
-
-                <ul
-                    v-else
-                    class="mt-4 divide-y divide-slate-200"
-                >
-                    <li
-                        v-for="review in reviewsPage.data"
-                        :key="review.id"
-                        class="py-4"
-                    >
-                        <div class="flex items-center justify-between gap-4">
-                            <p class="text-sm font-medium text-slate-900">
-                                {{ review.author_name }}
-                            </p>
-                            <p
-                                v-if="review.rating !== null"
-                                class="text-sm text-slate-600"
-                            >
-                                {{ review.rating }}/5
-                            </p>
-                        </div>
-                        <p
-                            v-if="review.reviewed_at"
-                            class="mt-1 text-xs text-slate-500"
-                        >
-                            {{ review.reviewed_at }}
-                        </p>
-                        <p
-                            v-if="review.text"
-                            class="mt-2 text-sm text-slate-700"
-                        >
-                            {{ review.text }}
-                        </p>
-                    </li>
-                </ul>
-
-                <div
-                    v-if="reviewsPage.meta.last_page > 1"
-                    class="mt-4 flex items-center justify-between gap-4"
-                >
-                    <button
-                        type="button"
-                        class="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                        :disabled="reviewsLoading || reviewsPage.meta.current_page <= 1"
-                        @click="loadReviewsPage(reviewsPage.meta.current_page - 1)"
-                    >
-                        Previous
-                    </button>
-                    <span class="text-sm text-slate-600">
-                        Page {{ reviewsPage.meta.current_page }} of {{ reviewsPage.meta.last_page }}
-                    </span>
-                    <button
-                        type="button"
-                        class="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                        :disabled="reviewsLoading || reviewsPage.meta.current_page >= reviewsPage.meta.last_page"
-                        @click="loadReviewsPage(reviewsPage.meta.current_page + 1)"
-                    >
-                        Next
-                    </button>
-                </div>
-            </div>
-        </section>
+        </div>
     </AuthenticatedLayout>
 </template>
