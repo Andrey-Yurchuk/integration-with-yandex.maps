@@ -2,6 +2,7 @@
 
 namespace App\Jobs\YandexMaps;
 
+use App\Enums\OrganizationSyncStatus;
 use App\Exceptions\YandexMaps\BlockedException;
 use App\Exceptions\YandexMaps\ChangedSchemaException;
 use App\Exceptions\YandexMaps\InvalidUrlException;
@@ -15,6 +16,7 @@ use App\Repositories\Organizations\SyncRunRepository;
 use App\Services\YandexMaps\Parser;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Queue\TimeoutExceededException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Throwable;
@@ -25,14 +27,17 @@ final class SyncOrganizationJob implements ShouldQueue
 
     public int $tries = 3;
 
-    public int $timeout = 120;
+    public int $timeout;
+
+    public function __construct(public int $organizationId)
+    {
+        $this->timeout = self::configuredTimeout();
+    }
 
     public function backoff(): array
     {
         return [30, 60, 120];
     }
-
-    public function __construct(public int $organizationId) {}
 
     public function handle(
         Parser $parser,
@@ -42,7 +47,7 @@ final class SyncOrganizationJob implements ShouldQueue
     ): void {
         $lock = Cache::lock(
             $this->lockKey(),
-            (int) config('yandex-maps.timeout', 120),
+            self::configuredTimeout(),
         );
 
         if (! $lock->get()) {
@@ -109,6 +114,59 @@ final class SyncOrganizationJob implements ShouldQueue
         }
     }
 
+    public function failed(?Throwable $exception): void
+    {
+        $organization = Organization::query()->find($this->organizationId);
+
+        if ($organization === null) {
+            return;
+        }
+
+        if (! in_array($organization->sync_status, [
+            OrganizationSyncStatus::Queued,
+            OrganizationSyncStatus::Running,
+        ], true)) {
+            return;
+        }
+
+        $organizations = app(OrganizationRepository::class);
+        $syncRuns = app(SyncRunRepository::class);
+        $message = $this->failedMessage($exception);
+        $errorType = $this->failedErrorType($exception);
+
+        $syncRun = $organization->syncRuns()
+            ->where('status', OrganizationSyncStatus::Running)
+            ->latest('id')
+            ->first();
+
+        if ($syncRun instanceof OrganizationSyncRun) {
+            DB::transaction(function () use (
+                $syncRuns,
+                $organizations,
+                $syncRun,
+                $organization,
+                $message,
+                $errorType,
+                $exception,
+            ): void {
+                $syncRuns->markFailed(
+                    $syncRun,
+                    $errorType,
+                    $message,
+                    [
+                        'exception' => $exception !== null ? $exception::class : null,
+                    ],
+                );
+
+                $organizations->markFailed($organization, $message);
+            });
+
+            return;
+        }
+
+        $organizations->markFailed($organization, $message);
+    }
+
     /**
      * Returns the organization URL passed to the parser
      */
@@ -123,6 +181,11 @@ final class SyncOrganizationJob implements ShouldQueue
     private function lockKey(): string
     {
         return 'yandex-maps-sync:'.$this->organizationId;
+    }
+
+    private static function configuredTimeout(): int
+    {
+        return (int) config('yandex-maps.timeout', 300);
     }
 
     /**
@@ -191,6 +254,36 @@ final class SyncOrganizationJob implements ShouldQueue
     private function errorMessage(Throwable $exception): string
     {
         if ($this->isDomainException($exception)) {
+            return $exception->getMessage();
+        }
+
+        return 'Organization synchronization failed unexpectedly';
+    }
+
+    private function failedErrorType(?Throwable $exception): string
+    {
+        if ($exception instanceof TimeoutExceededException) {
+            return 'job_timeout';
+        }
+
+        if ($exception instanceof ParserTimeoutException) {
+            return 'parser_timeout';
+        }
+
+        return 'unexpected';
+    }
+
+    private function failedMessage(?Throwable $exception): string
+    {
+        if ($exception instanceof TimeoutExceededException) {
+            return 'Organization synchronization timed out';
+        }
+
+        if ($exception instanceof ParserTimeoutException) {
+            return $exception->getMessage();
+        }
+
+        if ($exception !== null && $this->isDomainException($exception)) {
             return $exception->getMessage();
         }
 

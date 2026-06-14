@@ -28,6 +28,6 @@ final class SaveSourceAction
             'yandex_object_id' => $normalized->objectId,
         ]);
 
-        return $this->startSync->handle($organization);
+        return $this->startSync->handle($organization, force: true);
     }
 }

@@ -36,5 +36,6 @@
         <env name="PULSE_ENABLED" value="false" force="true"/>
         <env name="TELESCOPE_ENABLED" value="false" force="true"/>
         <env name="NIGHTWATCH_ENABLED" value="false" force="true"/>
+        <env name="YANDEX_MAPS_TIMEOUT" value="300" force="true"/>
     </php>
 </phpunit>

@@ -117,7 +117,7 @@ final class StoreOrganizationSourceTest extends TestCase
             'yandex_object_id' => '9876543210',
         ]);
 
-        Queue::assertPushed(SyncOrganizationJob::class, 1);
+        Queue::assertPushed(SyncOrganizationJob::class, 2);
     }
 
     public function test_another_user_does_not_overwrite_existing_organization(): void

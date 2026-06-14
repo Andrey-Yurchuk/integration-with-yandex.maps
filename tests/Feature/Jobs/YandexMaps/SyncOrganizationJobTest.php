@@ -8,12 +8,14 @@ use App\Enums\OrganizationSyncStatus;
 use App\Exceptions\YandexMaps\UnavailableException;
 use App\Jobs\YandexMaps\SyncOrganizationJob;
 use App\Models\Organization;
+use App\Models\OrganizationSyncRun;
 use App\Repositories\Organizations\OrganizationRepository;
 use App\Repositories\Organizations\ReviewRepository;
 use App\Repositories\Organizations\SyncRunRepository;
 use App\Services\YandexMaps\Parser;
 use DateTimeImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Queue\TimeoutExceededException;
 use Illuminate\Support\Facades\Cache;
 use Tests\Fakes\YandexMaps\FakeParser;
 use Tests\TestCase;
@@ -98,7 +100,7 @@ final class SyncOrganizationJobTest extends TestCase
         ]);
 
         $parser = new FakeParser;
-        $lock = Cache::lock('yandex-maps-sync:'.$organization->id, 120);
+        $lock = Cache::lock('yandex-maps-sync:'.$organization->id, (int) config('yandex-maps.timeout', 300));
         $lock->get();
 
         try {
@@ -111,6 +113,35 @@ final class SyncOrganizationJobTest extends TestCase
         $organization->refresh();
         $this->assertSame(OrganizationSyncStatus::Queued, $organization->sync_status);
         $this->assertDatabaseCount('organization_sync_runs', 0);
+    }
+
+    public function test_failed_marks_running_organization_as_failed_on_job_timeout(): void
+    {
+        $organization = Organization::factory()->syncing()->create();
+        $syncRun = OrganizationSyncRun::factory()->for($organization)->create([
+            'status' => OrganizationSyncStatus::Running,
+        ]);
+
+        $job = new SyncOrganizationJob($organization->id);
+        $job->failed(new TimeoutExceededException);
+
+        $organization->refresh();
+        $syncRun->refresh();
+
+        $this->assertSame(OrganizationSyncStatus::Failed, $organization->sync_status);
+        $this->assertSame('Organization synchronization timed out', $organization->last_sync_error);
+        $this->assertNotNull($organization->last_sync_finished_at);
+        $this->assertSame(OrganizationSyncStatus::Failed, $syncRun->status);
+        $this->assertSame('job_timeout', $syncRun->error_type);
+    }
+
+    public function test_job_timeout_matches_configured_sync_timeout(): void
+    {
+        config()->set('yandex-maps.timeout', 300);
+
+        $job = new SyncOrganizationJob(1);
+
+        $this->assertSame(300, $job->timeout);
     }
 
     private function runJob(Organization $organization, Parser $parser): void

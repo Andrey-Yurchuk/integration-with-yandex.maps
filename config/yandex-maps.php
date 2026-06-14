@@ -7,7 +7,7 @@ return [
 
     'page_size' => (int) env('YANDEX_MAPS_PAGE_SIZE', 50),
 
-    'timeout' => (int) env('YANDEX_MAPS_TIMEOUT', 120),
+    'timeout' => (int) env('YANDEX_MAPS_TIMEOUT', 300),
 
     'parser_version' => '1.0.0',
 
