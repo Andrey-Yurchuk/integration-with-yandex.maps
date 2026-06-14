@@ -1,0 +1,174 @@
+<?php
+
+namespace Tests\Feature\Organizations;
+
+use App\Enums\OrganizationSyncStatus;
+use App\Models\Organization;
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
+use Tests\TestCase;
+
+final class StoreOrganizationSourceTest extends TestCase
+{
+    use RefreshDatabase;
+
+    private const VALID_URL = 'https://yandex.ru/maps/org/cafe_pushkin/123456789012/';
+
+    public function test_guest_cannot_save_source_url(): void
+    {
+        $response = $this->post('/organization', [
+            'source_url' => self::VALID_URL,
+        ]);
+
+        $response->assertRedirect(route('login'));
+        $this->assertDatabaseCount('organizations', 0);
+    }
+
+    public function test_authenticated_user_can_save_valid_yandex_maps_organization_url(): void
+    {
+        $user = User::factory()->create();
+
+        $response = $this->actingAs($user)->post('/organization', [
+            'source_url' => self::VALID_URL,
+        ]);
+
+        $response->assertRedirect(route('organization'));
+
+        $this->assertDatabaseHas('organizations', [
+            'user_id' => $user->id,
+            'source_url' => self::VALID_URL,
+            'normalized_url' => 'https://yandex.ru/maps/org/cafe_pushkin/123456789012/',
+            'yandex_object_id' => '123456789012',
+            'sync_status' => OrganizationSyncStatus::Awaiting->value,
+        ]);
+    }
+
+    public function test_invalid_url_fails_validation(): void
+    {
+        $user = User::factory()->create();
+
+        $response = $this->from('/organization')
+            ->actingAs($user)
+            ->post('/organization', [
+                'source_url' => 'not-a-url',
+            ]);
+
+        $response->assertRedirect('/organization');
+        $response->assertSessionHasErrors('source_url');
+        $this->assertDatabaseCount('organizations', 0);
+    }
+
+    public function test_non_yandex_url_fails_validation(): void
+    {
+        $user = User::factory()->create();
+
+        $response = $this->from('/organization')
+            ->actingAs($user)
+            ->post('/organization', [
+                'source_url' => 'https://google.com/maps/place/test',
+            ]);
+
+        $response->assertRedirect('/organization');
+        $response->assertSessionHasErrors('source_url');
+        $this->assertDatabaseCount('organizations', 0);
+    }
+
+    public function test_http_url_fails_validation(): void
+    {
+        $user = User::factory()->create();
+
+        $response = $this->from('/organization')
+            ->actingAs($user)
+            ->post('/organization', [
+                'source_url' => 'http://yandex.ru/maps/org/test/1234567890/',
+            ]);
+
+        $response->assertRedirect('/organization');
+        $response->assertSessionHasErrors('source_url');
+        $this->assertDatabaseCount('organizations', 0);
+    }
+
+    public function test_repeated_save_updates_current_user_organization(): void
+    {
+        $user = User::factory()->create();
+        $updatedUrl = 'https://yandex.by/maps/org/another_org/9876543210/';
+
+        $this->actingAs($user)->post('/organization', [
+            'source_url' => self::VALID_URL,
+        ])->assertRedirect(route('organization'));
+
+        $this->actingAs($user)->post('/organization', [
+            'source_url' => $updatedUrl,
+        ])->assertRedirect(route('organization'));
+
+        $this->assertDatabaseCount('organizations', 1);
+        $this->assertDatabaseHas('organizations', [
+            'user_id' => $user->id,
+            'source_url' => $updatedUrl,
+            'yandex_object_id' => '9876543210',
+        ]);
+    }
+
+    public function test_another_user_does_not_overwrite_existing_organization(): void
+    {
+        $firstUser = User::factory()->create();
+        $secondUser = User::factory()->create();
+
+        $this->actingAs($firstUser)->post('/organization', [
+            'source_url' => self::VALID_URL,
+        ])->assertRedirect(route('organization'));
+
+        $secondUrl = 'https://yandex.com/maps/org/company/111222333444/';
+
+        $this->actingAs($secondUser)->post('/organization', [
+            'source_url' => $secondUrl,
+        ])->assertRedirect(route('organization'));
+
+        $this->assertDatabaseCount('organizations', 2);
+
+        $this->assertDatabaseHas('organizations', [
+            'user_id' => $firstUser->id,
+            'source_url' => self::VALID_URL,
+        ]);
+
+        $this->assertDatabaseHas('organizations', [
+            'user_id' => $secondUser->id,
+            'source_url' => $secondUrl,
+        ]);
+
+        $this->assertSame(1, Organization::query()->where('user_id', $firstUser->id)->count());
+        $this->assertSame(1, Organization::query()->where('user_id', $secondUser->id)->count());
+    }
+
+    public function test_organization_page_receives_saved_organization_props(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user)->post('/organization', [
+            'source_url' => self::VALID_URL,
+        ]);
+
+        $response = $this->actingAs($user)->get('/organization');
+
+        $response->assertOk();
+        $response->assertInertia(fn ($page) => $page
+            ->where('organization.source_url', self::VALID_URL)
+            ->where('organization.normalized_url', 'https://yandex.ru/maps/org/cafe_pushkin/123456789012/')
+            ->where('organization.yandex_object_id', '123456789012')
+            ->where('organization.sync_status', OrganizationSyncStatus::Awaiting->value));
+    }
+
+    public function test_store_does_not_call_external_network(): void
+    {
+        Http::fake();
+
+        $user = User::factory()->create();
+
+        $this->actingAs($user)->post('/organization', [
+            'source_url' => self::VALID_URL,
+        ])->assertRedirect(route('organization'));
+
+        Http::assertNothingSent();
+    }
+}

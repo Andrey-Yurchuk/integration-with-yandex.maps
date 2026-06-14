@@ -9,7 +9,13 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 
+/**
+ * @property OrganizationSyncStatus $sync_status
+ * @property Carbon|null $last_sync_started_at
+ * @property Carbon|null $last_sync_finished_at
+ */
 #[Fillable([
     'user_id',
     'source_url',
