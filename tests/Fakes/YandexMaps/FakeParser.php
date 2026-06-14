@@ -9,6 +9,8 @@ use Throwable;
 
 final class FakeParser implements Parser
 {
+    public bool $called = false;
+
     private ?OrganizationDto $organization = null;
 
     private ?Throwable $exception = null;
@@ -37,6 +39,8 @@ final class FakeParser implements Parser
 
     public function parse(string $url): OrganizationDto
     {
+        $this->called = true;
+
         if ($this->exception !== null) {
             throw $this->exception;
         }

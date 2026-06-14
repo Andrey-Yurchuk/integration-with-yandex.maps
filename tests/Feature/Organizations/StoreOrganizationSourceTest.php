@@ -3,10 +3,12 @@
 namespace Tests\Feature\Organizations;
 
 use App\Enums\OrganizationSyncStatus;
+use App\Jobs\YandexMaps\SyncOrganizationJob;
 use App\Models\Organization;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
 final class StoreOrganizationSourceTest extends TestCase
@@ -27,6 +29,8 @@ final class StoreOrganizationSourceTest extends TestCase
 
     public function test_authenticated_user_can_save_valid_yandex_maps_organization_url(): void
     {
+        Queue::fake();
+
         $user = User::factory()->create();
 
         $response = $this->actingAs($user)->post('/organization', [
@@ -40,8 +44,10 @@ final class StoreOrganizationSourceTest extends TestCase
             'source_url' => self::VALID_URL,
             'normalized_url' => 'https://yandex.ru/maps/org/cafe_pushkin/123456789012/',
             'yandex_object_id' => '123456789012',
-            'sync_status' => OrganizationSyncStatus::Awaiting->value,
+            'sync_status' => OrganizationSyncStatus::Queued->value,
         ]);
+
+        Queue::assertPushed(SyncOrganizationJob::class);
     }
 
     public function test_invalid_url_fails_validation(): void
@@ -91,6 +97,8 @@ final class StoreOrganizationSourceTest extends TestCase
 
     public function test_repeated_save_updates_current_user_organization(): void
     {
+        Queue::fake();
+
         $user = User::factory()->create();
         $updatedUrl = 'https://yandex.by/maps/org/another_org/9876543210/';
 
@@ -108,6 +116,8 @@ final class StoreOrganizationSourceTest extends TestCase
             'source_url' => $updatedUrl,
             'yandex_object_id' => '9876543210',
         ]);
+
+        Queue::assertPushed(SyncOrganizationJob::class, 1);
     }
 
     public function test_another_user_does_not_overwrite_existing_organization(): void
@@ -143,6 +153,8 @@ final class StoreOrganizationSourceTest extends TestCase
 
     public function test_organization_page_receives_saved_organization_props(): void
     {
+        Queue::fake();
+
         $user = User::factory()->create();
 
         $this->actingAs($user)->post('/organization', [
@@ -156,11 +168,29 @@ final class StoreOrganizationSourceTest extends TestCase
             ->where('organization.source_url', self::VALID_URL)
             ->where('organization.normalized_url', 'https://yandex.ru/maps/org/cafe_pushkin/123456789012/')
             ->where('organization.yandex_object_id', '123456789012')
-            ->where('organization.sync_status', OrganizationSyncStatus::Awaiting->value));
+            ->where('organization.sync_status', OrganizationSyncStatus::Queued->value));
+    }
+
+    public function test_saving_valid_url_dispatches_sync_organization_job(): void
+    {
+        Queue::fake();
+
+        $user = User::factory()->create();
+
+        $this->actingAs($user)->post('/organization', [
+            'source_url' => self::VALID_URL,
+        ])->assertRedirect(route('organization'));
+
+        Queue::assertPushed(SyncOrganizationJob::class, function (SyncOrganizationJob $job) use ($user): bool {
+            $organization = Organization::query()->where('user_id', $user->id)->first();
+
+            return $organization !== null && $job->organizationId === $organization->id;
+        });
     }
 
     public function test_store_does_not_call_external_network(): void
     {
+        Queue::fake();
         Http::fake();
 
         $user = User::factory()->create();

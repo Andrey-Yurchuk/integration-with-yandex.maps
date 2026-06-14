@@ -2,7 +2,6 @@
 
 namespace App\Actions\Organizations;
 
-use App\Enums\OrganizationSyncStatus;
 use App\Models\Organization;
 use App\Models\User;
 use App\Repositories\Organizations\OrganizationRepository;
@@ -13,6 +12,7 @@ final class SaveSourceAction
     public function __construct(
         private UrlNormalizer $normalizer,
         private OrganizationRepository $organizations,
+        private StartSyncAction $startSync,
     ) {}
 
     /**
@@ -22,11 +22,12 @@ final class SaveSourceAction
     {
         $normalized = $this->normalizer->normalize($sourceUrl);
 
-        return $this->organizations->saveSource($user, [
+        $organization = $this->organizations->saveSource($user, [
             'source_url' => $normalized->sourceUrl,
             'normalized_url' => $normalized->normalizedUrl,
             'yandex_object_id' => $normalized->objectId,
-            'sync_status' => OrganizationSyncStatus::Awaiting,
         ]);
+
+        return $this->startSync->handle($organization);
     }
 }

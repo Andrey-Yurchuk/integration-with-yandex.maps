@@ -2,6 +2,7 @@
 
 namespace App\Repositories\Organizations;
 
+use App\DTO\YandexMaps\ReviewDto;
 use App\Models\Organization;
 use App\Models\Review;
 use DateTimeInterface;
@@ -48,6 +49,43 @@ final class ReviewRepository
         }
 
         return Review::query()->create($attributes);
+    }
+
+    /**
+     * Upserts parser reviews for an organization without creating duplicates
+     *
+     * @param  array<int, ReviewDto>  $reviewDtos
+     */
+    public function upsertForOrganization(Organization $organization, array $reviewDtos): int
+    {
+        $saved = 0;
+
+        foreach ($reviewDtos as $reviewDto) {
+            $this->save($organization, $this->attributesFromDto($reviewDto));
+            $saved++;
+        }
+
+        return $saved;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function attributesFromDto(ReviewDto $reviewDto): array
+    {
+        $attributes = [
+            'external_id' => $reviewDto->externalId,
+            'author_name' => $reviewDto->authorName,
+            'author_avatar_url' => $reviewDto->authorAvatarUrl,
+            'reviewed_at' => $reviewDto->reviewedAt,
+            'text' => $reviewDto->text,
+            'rating' => $reviewDto->rating,
+            'raw_payload' => $reviewDto->rawPayload,
+        ];
+
+        $attributes['content_hash'] = self::contentHash($attributes);
+
+        return $attributes;
     }
 
     /**
