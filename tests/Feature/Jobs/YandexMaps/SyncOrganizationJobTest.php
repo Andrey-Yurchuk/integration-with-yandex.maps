@@ -5,6 +5,10 @@ namespace Tests\Feature\Jobs\YandexMaps;
 use App\DTO\YandexMaps\OrganizationDto;
 use App\DTO\YandexMaps\ReviewDto;
 use App\Enums\OrganizationSyncStatus;
+use App\Exceptions\YandexMaps\BlockedException;
+use App\Exceptions\YandexMaps\ChangedSchemaException;
+use App\Exceptions\YandexMaps\InvalidUrlException;
+use App\Exceptions\YandexMaps\ParserTimeoutException;
 use App\Exceptions\YandexMaps\UnavailableException;
 use App\Jobs\YandexMaps\SyncOrganizationJob;
 use App\Models\Organization;
@@ -17,6 +21,7 @@ use DateTimeImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Queue\TimeoutExceededException;
 use Illuminate\Support\Facades\Cache;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Fakes\YandexMaps\FakeParser;
 use Tests\TestCase;
 
@@ -100,6 +105,94 @@ final class SyncOrganizationJobTest extends TestCase
             'error_type' => 'unavailable',
             'error_message' => 'Organization page is unavailable',
         ]);
+    }
+
+    /**
+     * @return array<string, array{0: \Throwable, 1: string, 2: string}>
+     */
+    public static function domainParserExceptions(): array
+    {
+        return [
+            'invalid url' => [
+                new InvalidUrlException('URL is not a supported Yandex Maps organization card'),
+                'invalid_url',
+                'URL is not a supported Yandex Maps organization card',
+            ],
+            'unavailable' => [
+                new UnavailableException('Organization page is unavailable'),
+                'unavailable',
+                'Organization page is unavailable',
+            ],
+            'blocked' => [
+                new BlockedException('Yandex Maps blocked the parser request'),
+                'blocked',
+                'Yandex Maps blocked the parser request',
+            ],
+            'changed schema' => [
+                new ChangedSchemaException('Yandex Maps page state is missing or has an unexpected format'),
+                'changed_schema',
+                'Yandex Maps page state is missing or has an unexpected format',
+            ],
+            'parser timeout' => [
+                new ParserTimeoutException('Yandex Maps parser request timed out'),
+                'parser_timeout',
+                'Yandex Maps parser request timed out',
+            ],
+        ];
+    }
+
+    #[DataProvider('domainParserExceptions')]
+    public function test_maps_domain_parser_exceptions_to_failed_sync_state(
+        \Throwable $exception,
+        string $errorType,
+        string $message,
+    ): void {
+        $organization = Organization::factory()->create([
+            'sync_status' => OrganizationSyncStatus::Queued,
+        ]);
+
+        $this->runJob($organization, (new FakeParser)->throws($exception));
+
+        $organization->refresh();
+        $syncRun = OrganizationSyncRun::query()
+            ->where('organization_id', $organization->id)
+            ->firstOrFail();
+
+        $this->assertSame(OrganizationSyncStatus::Failed, $organization->sync_status);
+        $this->assertSame($message, $organization->last_sync_error);
+        $this->assertSame(OrganizationSyncStatus::Failed, $syncRun->status);
+        $this->assertSame($errorType, $syncRun->error_type);
+        $this->assertSame($message, $syncRun->error_message);
+        $this->assertSame($exception::class, $syncRun->meta['exception'] ?? null);
+    }
+
+    public function test_marks_failed_and_rethrows_unexpected_exception(): void
+    {
+        $organization = Organization::factory()->create([
+            'sync_status' => OrganizationSyncStatus::Queued,
+        ]);
+
+        $exception = new \RuntimeException('Database connection lost');
+
+        try {
+            $this->runJob($organization, (new FakeParser)->throws($exception));
+            $this->fail('Expected RuntimeException to be rethrown');
+        } catch (\RuntimeException $caught) {
+            $this->assertSame('Database connection lost', $caught->getMessage());
+        }
+
+        $organization->refresh();
+        $syncRun = OrganizationSyncRun::query()
+            ->where('organization_id', $organization->id)
+            ->firstOrFail();
+
+        $this->assertSame(OrganizationSyncStatus::Failed, $organization->sync_status);
+        $this->assertSame(
+            'Organization synchronization failed unexpectedly',
+            $organization->last_sync_error,
+        );
+        $this->assertSame('unexpected', $syncRun->error_type);
+        $this->assertSame(\RuntimeException::class, $syncRun->meta['exception'] ?? null);
     }
 
     public function test_skips_parser_when_organization_lock_is_already_held(): void

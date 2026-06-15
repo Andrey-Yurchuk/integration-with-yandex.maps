@@ -54,4 +54,14 @@ class OrganizationFactory extends Factory
             'is_active' => false,
         ]);
     }
+
+    public function failed(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'sync_status' => OrganizationSyncStatus::Failed,
+            'last_sync_started_at' => now()->subHour(),
+            'last_sync_finished_at' => now()->subMinutes(30),
+            'last_sync_error' => 'Organization page is unavailable',
+        ]);
+    }
 }

@@ -34,4 +34,32 @@ final class OrganizationResourceTest extends TestCase
         $this->assertSame('succeeded', $payload['sync_status']);
         $this->assertSame('https://yandex.ru/maps/org/test/1/', $payload['source_url']);
     }
+
+    public function test_exposes_last_sync_error_for_failed_organization(): void
+    {
+        $organization = new Organization([
+            'source_url' => 'https://yandex.ru/maps/org/test/1/',
+            'sync_status' => OrganizationSyncStatus::Failed,
+            'last_sync_error' => 'Yandex Maps blocked the parser request',
+        ]);
+
+        $payload = OrganizationResource::make($organization)->resolve(new Request);
+
+        $this->assertSame('failed', $payload['sync_status']);
+        $this->assertSame('Yandex Maps blocked the parser request', $payload['last_sync_error']);
+    }
+
+    public function test_does_not_expose_internal_fields(): void
+    {
+        $organization = new Organization([
+            'source_url' => 'https://yandex.ru/maps/org/test/1/',
+            'sync_status' => OrganizationSyncStatus::Succeeded,
+            'parser_version' => 'internal-1.0.0',
+        ]);
+
+        $payload = OrganizationResource::make($organization)->resolve(new Request);
+
+        $this->assertArrayNotHasKey('parser_version', $payload);
+        $this->assertArrayNotHasKey('user_id', $payload);
+    }
 }

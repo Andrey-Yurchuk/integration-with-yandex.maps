@@ -53,6 +53,18 @@ final class StartSyncActionTest extends TestCase
         Queue::assertNothingPushed();
     }
 
+    public function test_dispatches_sync_when_organization_previously_failed(): void
+    {
+        Queue::fake();
+
+        $organization = Organization::factory()->failed()->create();
+
+        $updated = app(StartSyncAction::class)->handle($organization);
+
+        $this->assertSame(OrganizationSyncStatus::Queued, $updated->sync_status);
+        Queue::assertPushed(SyncOrganizationJob::class, fn (SyncOrganizationJob $job) => $job->organizationId === $organization->id);
+    }
+
     public function test_force_dispatches_sync_when_organization_is_already_running(): void
     {
         Queue::fake();

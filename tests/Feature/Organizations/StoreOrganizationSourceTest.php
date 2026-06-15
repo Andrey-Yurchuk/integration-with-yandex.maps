@@ -257,4 +257,26 @@ final class StoreOrganizationSourceTest extends TestCase
 
         Http::assertNothingSent();
     }
+
+    public function test_failed_organization_can_be_resynced_by_saving_again(): void
+    {
+        Queue::fake();
+
+        $user = User::factory()->create();
+        Organization::factory()->for($user)->failed()->create([
+            'source_url' => self::VALID_URL,
+            'normalized_url' => 'https://yandex.ru/maps/org/cafe_pushkin/123456789012/',
+            'yandex_object_id' => '123456789012',
+        ]);
+
+        $this->actingAs($user)->post('/organization', [
+            'source_url' => self::VALID_URL,
+        ])->assertRedirect(route('organization'));
+
+        $organization = Organization::query()->where('user_id', $user->id)->firstOrFail();
+        $organization->refresh();
+
+        $this->assertSame(OrganizationSyncStatus::Queued, $organization->sync_status);
+        Queue::assertPushed(SyncOrganizationJob::class);
+    }
 }
