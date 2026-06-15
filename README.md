@@ -1,58 +1,83 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Интеграция с Яндекс.Картами
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Веб-приложение для подключения карточки организации на Яндекс.Картах, асинхронной синхронизации отзывов и просмотра рейтинга с пагинацией
 
-## About Laravel
+## Стек
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+- Laravel 13, PHP 8.4
+- Inertia.js + Vue 3 (Composition API)
+- Laravel Sanctum (session auth для Inertia)
+- PostgreSQL 18, Redis (очередь и lock)
+- nginx, Docker Compose
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## Требования
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+- Docker и Docker Compose
+- Node.js 20+ (сборка фронтенда на хосте)
 
-## Learning Laravel
-
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
-
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
-
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
-
-## Agentic Development
-
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
+## Запуск
 
 ```bash
-composer require laravel/boost --dev
-
-php artisan boost:install
+cp .env.example .env
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+Заполните в `.env` минимум:
 
-## Contributing
+- `APP_KEY` - после `docker compose up` выполните `docker compose exec app php artisan key:generate`
+- `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`
+- `SEED_USER_EMAIL`, `SEED_USER_PASSWORD` - учётные данные demo-пользователя
+- при необходимости `APP_PORT` (по умолчанию `8080`)
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+Переменные парсера и Redis - см. `.env.example`.
 
-## Code of Conduct
+```bash
+docker compose up -d --build
+docker compose exec app php artisan key:generate   # если APP_KEY пустой
+docker compose exec app php artisan migrate --seed
+npm install
+npm run build
+```
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+Приложение: `http://localhost:8080` (или ваш `APP_PORT`).
 
-## Security Vulnerabilities
+Синхронизацию выполняет сервис `queue` в Compose. После запуска `docker compose ps` должен показывать статус `Up` у `app`, `nginx`, `postgres`, `redis`, `queue`.
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+## Вход
 
-## License
+Логин и пароль - из `SEED_USER_EMAIL` и `SEED_USER_PASSWORD` в `.env` (задаются при `migrate --seed`).
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+Страница входа: `/login`.
+
+## Проверка в UI
+
+1. Войти под seed-пользователем.
+2. Открыть `/organization`.
+3. Вставить ссылку на карточку организации Яндекс.Карт и нажать **Save and sync**.
+4. Дождаться статуса синхронизации (`queued` - `running` - `succeeded` или `failed`).
+5. Просмотреть название, рейтинг, счётчики оценок и отзывов, список отзывов.
+6. При более чем 50 отзывах - переключение страниц (данные из БД, парсер не запускается).
+7. Можно сохранить несколько организаций и переключать активную в списке.
+
+Повторная синхронизация - снова **Save and sync** (в том числе после `failed`).
+
+## Парсинг
+
+Официального API у Яндекс.Карт нет. Используется `InternalRequestParser`:
+
+- нормализует URL карточки;
+- загружает HTML вкладки отзывов и читает embedded JSON (`state-view`);
+- обходит страницы `?page=N` до лимита или пустой выдачи;
+- сохраняет организацию и отзывы в PostgreSQL.
+
+Отзывы в UI берутся из БД, а не с Яндекса при каждом открытии страницы: один раз после **Save and sync** job вытягивает до ~600 отзывов, дальше список листается по 50 из PostgreSQL.
+
+Защита Яндекса: HTTP-запросы с настраиваемым User-Agent, повторы при сбоях и пустых страницах, таймауты, lock на organization. Ошибки (недоступная карточка, блокировка, смена формата) попадают в статус `failed` и `last_sync_error` в интерфейсе.
+
+## Полезные команды
+
+```bash
+php artisan test
+composer phpstan
+composer lint
+npm run build
+```
