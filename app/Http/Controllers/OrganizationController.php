@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Actions\Organizations\ActivateOrganizationAction;
 use App\Actions\Organizations\SaveSourceAction;
 use App\Http\Requests\Organizations\StoreSourceRequest;
 use App\Http\Resources\OrganizationResource;
 use App\Http\Resources\OrganizationSyncStatusResource;
 use App\Http\Resources\ReviewResource;
+use App\Models\Organization;
 use App\Repositories\Organizations\OrganizationRepository;
 use App\Repositories\Organizations\ReviewRepository;
 use Illuminate\Http\JsonResponse;
@@ -22,13 +24,17 @@ final class OrganizationController extends Controller
         OrganizationRepository $organizations,
         ReviewRepository $reviews,
     ): Response {
-        $organization = $organizations->currentForUser($request->user());
+        $user = $request->user();
+        $organization = $organizations->currentForUser($user);
         $perPage = (int) config('yandex-maps.page_size', 50);
 
         return Inertia::render('Organizations/Show', [
             'organization' => $organization !== null
                 ? OrganizationResource::make($organization)->resolve()
                 : null,
+            'organizations' => OrganizationResource::collection(
+                $organizations->listForUser($user),
+            )->resolve(),
             'reviews' => $organization !== null
                 ? ReviewResource::paginatedPage($reviews->paginateForOrganization($organization, $perPage))
                 : ReviewResource::emptyPage($perPage),
@@ -38,6 +44,16 @@ final class OrganizationController extends Controller
     public function store(StoreSourceRequest $request, SaveSourceAction $action): RedirectResponse
     {
         $action->handle($request->user(), $request->string('source_url')->toString());
+
+        return redirect()->route('organization');
+    }
+
+    public function activate(
+        Request $request,
+        Organization $organization,
+        ActivateOrganizationAction $action,
+    ): RedirectResponse {
+        $action->handle($request->user(), $organization);
 
         return redirect()->route('organization');
     }

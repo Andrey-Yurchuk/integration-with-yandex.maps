@@ -28,6 +28,7 @@ final class OrganizationPageTest extends TestCase
         $response->assertOk();
         $response->assertInertia(fn ($page) => $page
             ->where('organization', null)
+            ->where('organizations', [])
             ->where('reviews.data', [])
             ->where('reviews.meta.total', 0));
     }

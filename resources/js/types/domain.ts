@@ -7,6 +7,7 @@ export type OrganizationSyncStatus =
 
 export type Organization = {
     id: number;
+    is_active: boolean;
     source_url: string;
     normalized_url: string | null;
     yandex_object_id: string | null;

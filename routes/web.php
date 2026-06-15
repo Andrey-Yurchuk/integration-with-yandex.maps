@@ -9,6 +9,7 @@ Route::redirect('/', '/login');
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/organization', [OrganizationController::class, 'show'])->name('organization');
     Route::post('/organization', [OrganizationController::class, 'store'])->name('organization.store');
+    Route::post('/organizations/{organization}/activate', [OrganizationController::class, 'activate'])->name('organizations.activate');
     Route::get('/organization/reviews', [ReviewController::class, 'index'])->name('organization.reviews');
     Route::get('/organization/sync-status', [OrganizationController::class, 'syncStatus'])->name('organization.sync-status');
 });

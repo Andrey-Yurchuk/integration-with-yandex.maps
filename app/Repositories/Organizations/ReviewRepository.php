@@ -63,6 +63,16 @@ final class ReviewRepository
     }
 
     /**
+     * Deletes all reviews stored for the organization
+     */
+    public function deleteForOrganization(Organization $organization): int
+    {
+        return Review::query()
+            ->where('organization_id', $organization->id)
+            ->delete();
+    }
+
+    /**
      * Upserts parser reviews for an organization without creating duplicates
      *
      * @param  array<int, ReviewDto>  $reviewDtos

@@ -30,6 +30,12 @@ final class SyncOrganizationJobTest extends TestCase
             'sync_status' => OrganizationSyncStatus::Queued,
         ]);
 
+        $snapshot = [
+            'source_url' => $organization->source_url,
+            'normalized_url' => $organization->normalized_url,
+            'yandex_object_id' => $organization->yandex_object_id,
+        ];
+
         $parser = (new FakeParser)->returns($this->organizationDto());
 
         $this->runJob($organization, $parser);
@@ -53,6 +59,9 @@ final class SyncOrganizationJobTest extends TestCase
             'reviews_saved' => 3,
             'ratings_count' => 1200,
             'reviews_count' => 450,
+            'source_url' => $snapshot['source_url'],
+            'normalized_url' => $snapshot['normalized_url'],
+            'yandex_object_id' => $snapshot['yandex_object_id'],
         ]);
     }
 

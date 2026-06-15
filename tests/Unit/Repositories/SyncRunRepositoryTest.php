@@ -38,6 +38,45 @@ final class SyncRunRepositoryTest extends TestCase
         ]);
     }
 
+    public function test_start_creates_running_sync_run_with_organization_snapshot(): void
+    {
+        $organization = Organization::factory()->create([
+            'source_url' => 'https://yandex.ru/maps/org/cafe/123/',
+            'normalized_url' => 'https://yandex.ru/maps/org/cafe/123/',
+            'yandex_object_id' => '123',
+            'title' => 'Cafe',
+        ]);
+
+        $run = $this->repository->start($organization);
+
+        $this->assertSame('https://yandex.ru/maps/org/cafe/123/', $run->source_url);
+        $this->assertSame('https://yandex.ru/maps/org/cafe/123/', $run->normalized_url);
+        $this->assertSame('123', $run->yandex_object_id);
+        $this->assertSame('Cafe', $run->organization_title);
+    }
+
+    public function test_start_resets_existing_sync_run_for_organization(): void
+    {
+        $organization = Organization::factory()->create();
+        $existing = OrganizationSyncRun::factory()->for($organization)->create([
+            'status' => OrganizationSyncStatus::Succeeded,
+            'reviews_found' => 600,
+            'reviews_saved' => 600,
+            'finished_at' => now()->subHour(),
+            'error_type' => 'job_timeout',
+            'error_message' => 'Organization synchronization timed out',
+        ]);
+
+        $run = $this->repository->start($organization);
+
+        $this->assertSame($existing->id, $run->id);
+        $this->assertDatabaseCount('organization_sync_runs', 1);
+        $this->assertSame(OrganizationSyncStatus::Running, $run->status);
+        $this->assertSame(0, $run->reviews_found);
+        $this->assertNull($run->finished_at);
+        $this->assertNull($run->error_type);
+    }
+
     public function test_mark_succeeded_updates_run_metrics(): void
     {
         $run = OrganizationSyncRun::factory()->create();

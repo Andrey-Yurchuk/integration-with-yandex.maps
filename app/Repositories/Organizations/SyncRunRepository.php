@@ -9,14 +9,25 @@ use App\Models\OrganizationSyncRun;
 final class SyncRunRepository
 {
     /**
-     * Opens a running sync run journal entry for the organization
+     * Opens or resets the sync run record for the organization
      */
     public function start(Organization $organization): OrganizationSyncRun
     {
+        $run = OrganizationSyncRun::query()
+            ->where('organization_id', $organization->id)
+            ->first();
+
+        $attributes = $this->runningAttributes($organization);
+
+        if ($run !== null) {
+            $run->fill($attributes)->save();
+
+            return $run->refresh();
+        }
+
         return OrganizationSyncRun::query()->create([
+            ...$attributes,
             'organization_id' => $organization->id,
-            'status' => OrganizationSyncStatus::Running,
-            'started_at' => now(),
         ]);
     }
 
@@ -60,5 +71,28 @@ final class SyncRunRepository
         ])->save();
 
         return $run->refresh();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function runningAttributes(Organization $organization): array
+    {
+        return [
+            'source_url' => $organization->source_url,
+            'normalized_url' => $organization->normalized_url,
+            'yandex_object_id' => $organization->yandex_object_id,
+            'organization_title' => $organization->title,
+            'status' => OrganizationSyncStatus::Running,
+            'started_at' => now(),
+            'finished_at' => null,
+            'reviews_found' => 0,
+            'reviews_saved' => 0,
+            'ratings_count' => null,
+            'reviews_count' => null,
+            'error_type' => null,
+            'error_message' => null,
+            'meta' => null,
+        ];
     }
 }

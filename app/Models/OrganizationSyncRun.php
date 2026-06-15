@@ -11,6 +11,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 #[Fillable([
     'organization_id',
+    'source_url',
+    'normalized_url',
+    'yandex_object_id',
+    'organization_title',
     'status',
     'started_at',
     'finished_at',

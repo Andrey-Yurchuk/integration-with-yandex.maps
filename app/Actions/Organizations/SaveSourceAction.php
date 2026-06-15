@@ -16,7 +16,7 @@ final class SaveSourceAction
     ) {}
 
     /**
-     * Saves or updates the user's organization source link
+     * Saves or activates an organization from a source URL and queues sync
      */
     public function handle(User $user, string $sourceUrl): Organization
     {

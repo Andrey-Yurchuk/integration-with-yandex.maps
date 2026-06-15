@@ -101,6 +101,26 @@ final class OrganizationReviewsTest extends TestCase
         Queue::assertNothingPushed();
     }
 
+    public function test_reviews_endpoint_returns_only_active_organization_reviews(): void
+    {
+        $user = User::factory()->create();
+        $inactive = Organization::factory()->for($user)->inactive()->create([
+            'yandex_object_id' => '1111111111',
+        ]);
+        $active = Organization::factory()->for($user)->create([
+            'yandex_object_id' => '2222222222',
+        ]);
+
+        Review::factory()->for($inactive)->count(3)->create();
+        Review::factory()->for($active)->count(2)->create();
+
+        $response = $this->actingAs($user)->getJson('/organization/reviews');
+
+        $response->assertOk()
+            ->assertJsonPath('meta.total', 2)
+            ->assertJsonCount(2, 'data');
+    }
+
     public function test_user_cannot_see_another_users_reviews(): void
     {
         $owner = User::factory()->create();

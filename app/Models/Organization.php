@@ -18,6 +18,7 @@ use Illuminate\Support\Carbon;
  */
 #[Fillable([
     'user_id',
+    'is_active',
     'source_url',
     'normalized_url',
     'yandex_object_id',
@@ -40,6 +41,7 @@ class Organization extends Model
     protected function casts(): array
     {
         return [
+            'is_active' => 'boolean',
             'sync_status' => OrganizationSyncStatus::class,
             'rating' => 'decimal:2',
             'ratings_count' => 'integer',

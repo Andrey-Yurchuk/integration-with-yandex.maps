@@ -5,6 +5,7 @@ namespace Tests\Feature\Organizations;
 use App\Enums\OrganizationSyncStatus;
 use App\Jobs\YandexMaps\SyncOrganizationJob;
 use App\Models\Organization;
+use App\Models\Review;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -44,6 +45,7 @@ final class StoreOrganizationSourceTest extends TestCase
             'source_url' => self::VALID_URL,
             'normalized_url' => 'https://yandex.ru/maps/org/cafe_pushkin/123456789012/',
             'yandex_object_id' => '123456789012',
+            'is_active' => true,
             'sync_status' => OrganizationSyncStatus::Queued->value,
         ]);
 
@@ -95,7 +97,7 @@ final class StoreOrganizationSourceTest extends TestCase
         $this->assertDatabaseCount('organizations', 0);
     }
 
-    public function test_repeated_save_updates_current_user_organization(): void
+    public function test_saving_different_object_id_creates_second_organization(): void
     {
         Queue::fake();
 
@@ -110,13 +112,66 @@ final class StoreOrganizationSourceTest extends TestCase
             'source_url' => $updatedUrl,
         ])->assertRedirect(route('organization'));
 
-        $this->assertDatabaseCount('organizations', 1);
+        $this->assertDatabaseCount('organizations', 2);
         $this->assertDatabaseHas('organizations', [
             'user_id' => $user->id,
             'source_url' => $updatedUrl,
             'yandex_object_id' => '9876543210',
+            'is_active' => true,
+        ]);
+        $this->assertDatabaseHas('organizations', [
+            'user_id' => $user->id,
+            'yandex_object_id' => '123456789012',
+            'is_active' => false,
         ]);
 
+        Queue::assertPushed(SyncOrganizationJob::class, 2);
+    }
+
+    public function test_old_organization_reviews_remain_when_adding_new_organization(): void
+    {
+        Queue::fake();
+
+        $user = User::factory()->create();
+        $updatedUrl = 'https://yandex.by/maps/org/another_org/9876543210/';
+
+        $this->actingAs($user)->post('/organization', [
+            'source_url' => self::VALID_URL,
+        ])->assertRedirect(route('organization'));
+
+        $firstOrganization = Organization::query()
+            ->where('user_id', $user->id)
+            ->where('yandex_object_id', '123456789012')
+            ->firstOrFail();
+        Review::factory()->for($firstOrganization)->count(5)->create();
+
+        $this->actingAs($user)->post('/organization', [
+            'source_url' => $updatedUrl,
+        ])->assertRedirect(route('organization'));
+
+        $this->assertSame(5, Review::query()->where('organization_id', $firstOrganization->id)->count());
+    }
+
+    public function test_repeated_save_with_same_object_id_keeps_reviews_and_queues_sync(): void
+    {
+        Queue::fake();
+
+        $user = User::factory()->create();
+        $sameObjectUrl = 'https://yandex.ru/maps/org/cafe_pushkin/123456789012/?from=tabbar';
+
+        $this->actingAs($user)->post('/organization', [
+            'source_url' => self::VALID_URL,
+        ])->assertRedirect(route('organization'));
+
+        $organization = Organization::query()->where('user_id', $user->id)->firstOrFail();
+        Review::factory()->for($organization)->count(3)->create();
+
+        $this->actingAs($user)->post('/organization', [
+            'source_url' => $sameObjectUrl,
+        ])->assertRedirect(route('organization'));
+
+        $this->assertDatabaseCount('reviews', 3);
+        $this->assertDatabaseCount('organizations', 1);
         Queue::assertPushed(SyncOrganizationJob::class, 2);
     }
 

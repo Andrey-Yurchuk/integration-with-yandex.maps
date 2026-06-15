@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { Organization } from '@/types/domain';
 import { useForm } from '@inertiajs/vue3';
-import { watch } from 'vue';
+import { computed, watch } from 'vue';
 
 const props = defineProps<{
     organization: Organization | null;
@@ -20,7 +20,20 @@ watch(
     },
 );
 
+const isSyncInProgress = computed(() => {
+    if (! props.organization) {
+        return false;
+    }
+
+    return props.organization.sync_status === 'queued'
+        || props.organization.sync_status === 'running';
+});
+
 const submit = (): void => {
+    if (isSyncInProgress.value || form.processing) {
+        return;
+    }
+
     form.post('/organization', {
         preserveScroll: true,
     });
@@ -70,10 +83,10 @@ const submit = (): void => {
                 <button
                     type="submit"
                     class="inline-flex min-w-[6.5rem] items-center justify-center rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-                    :disabled="form.processing"
+                    :disabled="isSyncInProgress || form.processing"
                     :aria-busy="form.processing"
                 >
-                    {{ form.processing ? 'Saving…' : 'Save link' }}
+                    {{ form.processing ? 'Saving and syncing…' : 'Save and sync' }}
                 </button>
             </div>
         </form>

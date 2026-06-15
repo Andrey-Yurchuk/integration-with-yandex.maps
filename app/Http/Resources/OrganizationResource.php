@@ -20,6 +20,7 @@ final class OrganizationResource extends JsonResource
 
         return [
             'id' => $this->resource->id,
+            'is_active' => $this->resource->is_active,
             'source_url' => $this->resource->source_url,
             'normalized_url' => $this->resource->normalized_url,
             'yandex_object_id' => $this->resource->yandex_object_id,

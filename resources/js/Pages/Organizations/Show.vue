@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import OrganizationForm from '@/Components/OrganizationForm.vue';
 import OrganizationSummary from '@/Components/OrganizationSummary.vue';
+import OrganizationSwitcher from '@/Components/OrganizationSwitcher.vue';
 import Pagination from '@/Components/Pagination.vue';
 import ReviewList from '@/Components/ReviewList.vue';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
@@ -16,6 +17,7 @@ const POLL_INTERVAL_MS = 2500;
 
 const props = defineProps<{
     organization: Organization | null;
+    organizations: Organization[];
     reviews: PaginatedReviews;
 }>();
 
@@ -165,6 +167,11 @@ onUnmounted(() => {
 
     <AuthenticatedLayout title="Organization settings">
         <div class="space-y-6">
+            <OrganizationSwitcher
+                :organizations="organizations"
+                :organization="organization"
+            />
+
             <OrganizationForm :organization="organization" />
 
             <OrganizationSummary :organization="organization" />

@@ -23,6 +23,7 @@ class OrganizationFactory extends Factory
 
         return [
             'user_id' => User::factory(),
+            'is_active' => true,
             'source_url' => 'https://yandex.ru/maps/org/test/'.$objectId,
             'normalized_url' => 'https://yandex.ru/maps/org/test/'.$objectId,
             'yandex_object_id' => $objectId,
@@ -44,6 +45,13 @@ class OrganizationFactory extends Factory
         return $this->state(fn (array $attributes) => [
             'sync_status' => OrganizationSyncStatus::Running,
             'last_sync_started_at' => now(),
+        ]);
+    }
+
+    public function inactive(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'is_active' => false,
         ]);
     }
 }

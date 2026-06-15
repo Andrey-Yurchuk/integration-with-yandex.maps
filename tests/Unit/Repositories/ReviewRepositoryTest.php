@@ -82,4 +82,15 @@ final class ReviewRepositoryTest extends TestCase
         $this->assertSame('Updated text', $second->text);
         $this->assertDatabaseCount('reviews', 1);
     }
+
+    public function test_delete_for_organization_removes_all_reviews(): void
+    {
+        $organization = Organization::factory()->create();
+        Review::factory()->for($organization)->count(3)->create();
+
+        $deleted = $this->repository->deleteForOrganization($organization);
+
+        $this->assertSame(3, $deleted);
+        $this->assertDatabaseCount('reviews', 0);
+    }
 }
