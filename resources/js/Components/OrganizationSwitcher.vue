@@ -38,7 +38,7 @@ const activate = (organizationId: number): void => {
         </label>
         <select
             id="organization-switcher"
-            class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-slate-500 focus:outline-none"
+            class="mt-1 w-full cursor-pointer rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-slate-500 focus:outline-none"
             :value="organization?.id ?? ''"
             @change="activate(Number(($event.target as HTMLSelectElement).value))"
         >

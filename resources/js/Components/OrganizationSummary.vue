@@ -14,6 +14,14 @@ const syncStatusLabels: Record<OrganizationSyncStatus, string> = {
     failed: 'Failed',
 };
 
+const syncStatusClasses: Record<OrganizationSyncStatus, string> = {
+    awaiting: 'text-slate-500',
+    queued: 'text-blue-600',
+    running: 'text-amber-600',
+    succeeded: 'text-green-600',
+    failed: 'text-red-600',
+};
+
 const displayUrl = computed(() => {
     if (! props.organization) {
         return null;
@@ -28,6 +36,14 @@ const syncStatusLabel = computed(() => {
     }
 
     return syncStatusLabels[props.organization.sync_status];
+});
+
+const syncStatusClass = computed(() => {
+    if (! props.organization) {
+        return '';
+    }
+
+    return syncStatusClasses[props.organization.sync_status];
 });
 
 const formatTimestamp = (value: string | null): string | null => {
@@ -103,7 +119,7 @@ const lastSyncFinishedAt = computed(() => formatTimestamp(props.organization?.la
                 <dd class="mt-1 break-all text-slate-900">
                     <a
                         :href="displayUrl"
-                        class="text-slate-900 underline decoration-slate-300 underline-offset-2 hover:decoration-slate-500"
+                        class="cursor-pointer text-slate-900 underline decoration-slate-300 underline-offset-2 hover:decoration-slate-500"
                         target="_blank"
                         rel="noopener noreferrer"
                     >
@@ -116,7 +132,10 @@ const lastSyncFinishedAt = computed(() => formatTimestamp(props.organization?.la
                 <dt class="font-medium text-slate-700">
                     Sync status
                 </dt>
-                <dd class="mt-1 text-slate-900">
+                <dd
+                    class="mt-1 font-medium"
+                    :class="syncStatusClass"
+                >
                     {{ syncStatusLabel }}
                 </dd>
             </div>

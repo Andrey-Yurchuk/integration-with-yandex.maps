@@ -82,7 +82,7 @@ const submit = (): void => {
             <div>
                 <button
                     type="submit"
-                    class="inline-flex min-w-[6.5rem] items-center justify-center rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                    class="inline-flex min-w-[6.5rem] cursor-pointer items-center justify-center rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
                     :disabled="isSyncInProgress || form.processing"
                     :aria-busy="form.processing"
                 >

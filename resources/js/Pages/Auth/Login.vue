@@ -88,14 +88,14 @@ const submit = (): void => {
                         v-model="form.remember"
                         type="checkbox"
                         name="remember"
-                        class="rounded border-slate-300 text-slate-900 focus:ring-slate-500"
+                        class="cursor-pointer rounded border-slate-300 text-slate-900 focus:ring-slate-500"
                     >
                     Remember me
                 </label>
 
                 <button
                     type="submit"
-                    class="w-full rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                    class="w-full cursor-pointer rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
                     :disabled="form.processing"
                 >
                     {{ form.processing ? 'Signing in…' : 'Sign in' }}

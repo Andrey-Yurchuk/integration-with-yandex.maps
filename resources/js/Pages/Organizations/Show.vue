@@ -11,7 +11,7 @@ import type {
     SyncStatus,
 } from '@/types/domain';
 import { Head, router } from '@inertiajs/vue3';
-import { onUnmounted, ref, watch } from 'vue';
+import { nextTick, onUnmounted, ref, watch } from 'vue';
 
 const POLL_INTERVAL_MS = 2500;
 
@@ -24,6 +24,7 @@ const props = defineProps<{
 const organization = ref<Organization | null>(props.organization);
 const reviews = ref<PaginatedReviews>(props.reviews);
 const reviewsLoading = ref(false);
+const reviewsSection = ref<HTMLElement | null>(null);
 
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let pollInFlight = false;
@@ -70,6 +71,13 @@ const applySyncStatus = (status: SyncStatus): void => {
     };
 };
 
+const scrollToReviews = (): void => {
+    reviewsSection.value?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+    });
+};
+
 const loadReviewsPage = async (page: number): Promise<void> => {
     if (reviewsLoading.value || page < 1 || page > reviews.value.meta.last_page) {
         return;
@@ -91,6 +99,8 @@ const loadReviewsPage = async (page: number): Promise<void> => {
         }
 
         reviews.value = await response.json() as PaginatedReviews;
+        await nextTick();
+        scrollToReviews();
     } finally {
         reviewsLoading.value = false;
     }
@@ -176,7 +186,10 @@ onUnmounted(() => {
 
             <OrganizationSummary :organization="organization" />
 
-            <div class="space-y-4">
+            <div
+                ref="reviewsSection"
+                class="scroll-mt-6 space-y-4"
+            >
                 <ReviewList
                     :organization="organization"
                     :reviews="reviews"

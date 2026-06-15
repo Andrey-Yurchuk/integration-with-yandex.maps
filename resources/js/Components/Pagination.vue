@@ -24,7 +24,7 @@ const goToPage = (page: number): void => {
     >
         <button
             type="button"
-            class="inline-flex min-w-[5.5rem] items-center justify-center rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+            class="inline-flex min-w-[5.5rem] cursor-pointer items-center justify-center rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
             :disabled="loading || meta.current_page <= 1"
             @click="goToPage(meta.current_page - 1)"
         >
@@ -40,7 +40,7 @@ const goToPage = (page: number): void => {
 
         <button
             type="button"
-            class="inline-flex min-w-[5.5rem] items-center justify-center rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+            class="inline-flex min-w-[5.5rem] cursor-pointer items-center justify-center rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
             :disabled="loading || meta.current_page >= meta.last_page"
             @click="goToPage(meta.current_page + 1)"
         >

@@ -38,7 +38,7 @@ const userName = computed(() => {
                         method="post"
                         as="button"
                         type="button"
-                        class="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+                        class="cursor-pointer rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
                     >
                         Sign out
                     </Link>
