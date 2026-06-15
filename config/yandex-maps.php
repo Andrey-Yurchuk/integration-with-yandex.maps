@@ -11,8 +11,6 @@ return [
 
     'parser_version' => 'internal-1.0.0',
 
-    'parser_url' => env('PARSER_URL'),
-
     'user_agent' => env(
         'YANDEX_MAPS_USER_AGENT',
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
