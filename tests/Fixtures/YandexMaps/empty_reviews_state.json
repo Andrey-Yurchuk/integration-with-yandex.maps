@@ -1,0 +1,30 @@
+{
+    "stack": [
+        {
+            "mode": "orgpage",
+            "results": {
+                "items": [
+                    {
+                        "id": "1234567890",
+                        "title": "Quiet Cafe",
+                        "address": "Saint Petersburg, Nevsky Ave, 1",
+                        "ratingData": {
+                            "ratingCount": 0,
+                            "ratingValue": 0,
+                            "reviewCount": 0
+                        },
+                        "reviewResults": {
+                            "reviews": [],
+                            "params": {
+                                "page": 1,
+                                "totalPages": 0,
+                                "limit": 50,
+                                "count": 0
+                            }
+                        }
+                    }
+                ]
+            }
+        }
+    ]
+}
