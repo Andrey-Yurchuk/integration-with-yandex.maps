@@ -5,7 +5,6 @@ namespace App\Actions\Organizations;
 use App\Enums\OrganizationSyncStatus;
 use App\Jobs\YandexMaps\SyncOrganizationJob;
 use App\Models\Organization;
-use App\Models\OrganizationSyncRun;
 use App\Repositories\Organizations\OrganizationRepository;
 use App\Repositories\Organizations\SyncRunRepository;
 
@@ -32,7 +31,7 @@ final class StartSyncAction
         }
 
         if ($force) {
-            $this->closeOpenSyncRuns($organization);
+            $this->closeOpenSyncRun($organization);
         }
 
         $organization = $this->organizations->markQueued($organization);
@@ -42,17 +41,18 @@ final class StartSyncAction
         return $organization;
     }
 
-    private function closeOpenSyncRuns(Organization $organization): void
+    private function closeOpenSyncRun(Organization $organization): void
     {
-        OrganizationSyncRun::query()
-            ->where('organization_id', $organization->id)
-            ->where('status', OrganizationSyncStatus::Running)
-            ->orderByDesc('id')
-            ->get()
-            ->each(fn (OrganizationSyncRun $run) => $this->syncRuns->markFailed(
-                $run,
-                'replaced',
-                'Sync was replaced by a new request',
-            ));
+        $run = $organization->syncRun;
+
+        if ($run === null || $run->status !== OrganizationSyncStatus::Running) {
+            return;
+        }
+
+        $this->syncRuns->markFailed(
+            $run,
+            'replaced',
+            'Sync was replaced by a new request',
+        );
     }
 }

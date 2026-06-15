@@ -44,15 +44,15 @@ final class OrganizationPersistenceTest extends TestCase
         $this->assertTrue($reviews->first()->organization->is($organization));
     }
 
-    public function test_organization_has_many_sync_runs(): void
+    public function test_organization_has_one_sync_run(): void
     {
         $organization = Organization::factory()->create();
-        $runs = OrganizationSyncRun::factory()->count(2)->for($organization)->create();
+        $run = OrganizationSyncRun::factory()->for($organization)->create();
 
-        $organization->load('syncRuns');
+        $organization->load('syncRun');
 
-        $this->assertCount(2, $organization->syncRuns);
-        $this->assertTrue($runs->first()->organization->is($organization));
+        $this->assertTrue($organization->syncRun->is($run));
+        $this->assertTrue($run->organization->is($organization));
     }
 
     public function test_review_belongs_to_organization(): void

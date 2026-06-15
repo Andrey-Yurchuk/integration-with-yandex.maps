@@ -134,12 +134,12 @@ final class SyncOrganizationJob implements ShouldQueue
         $message = $this->failedMessage($exception);
         $errorType = $this->failedErrorType($exception);
 
-        $syncRun = $organization->syncRuns()
-            ->where('status', OrganizationSyncStatus::Running)
-            ->latest('id')
-            ->first();
+        $syncRun = $organization->syncRun;
 
-        if ($syncRun instanceof OrganizationSyncRun) {
+        if (
+            $syncRun !== null
+            && $syncRun->status === OrganizationSyncStatus::Running
+        ) {
             DB::transaction(function () use (
                 $syncRuns,
                 $organizations,

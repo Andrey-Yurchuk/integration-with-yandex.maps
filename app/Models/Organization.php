@@ -9,12 +9,14 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Carbon;
 
 /**
  * @property OrganizationSyncStatus $sync_status
  * @property Carbon|null $last_sync_started_at
  * @property Carbon|null $last_sync_finished_at
+ * @property-read OrganizationSyncRun|null $syncRun
  */
 #[Fillable([
     'user_id',
@@ -61,8 +63,8 @@ class Organization extends Model
         return $this->hasMany(Review::class);
     }
 
-    public function syncRuns(): HasMany
+    public function syncRun(): HasOne
     {
-        return $this->hasMany(OrganizationSyncRun::class);
+        return $this->hasOne(OrganizationSyncRun::class);
     }
 }
