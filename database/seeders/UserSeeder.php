@@ -9,7 +9,7 @@ final class UserSeeder extends Seeder
 {
     public function run(): void
     {
-        User::factory()->create([
+        User::query()->create([
             'name' => 'Demo User',
             'email' => config('seed.user.email'),
             'password' => config('seed.user.password'),
