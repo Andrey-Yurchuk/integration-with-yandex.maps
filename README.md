@@ -23,7 +23,7 @@ cp .env.example .env
 
 Заполните в `.env` минимум:
 
-- `APP_KEY` - после `docker compose up` выполните `docker compose exec app php artisan key:generate`
+- `APP_KEY` - сгенерируйте до первого запуска или после `docker compose up` выполните `php artisan key:generate`, затем `docker compose down && docker compose up -d`
 - `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`
 - `SEED_USER_EMAIL`, `SEED_USER_PASSWORD` - учётные данные demo-пользователя
 - при необходимости `APP_PORT` (по умолчанию `8080`)
@@ -32,6 +32,7 @@ cp .env.example .env
 
 ```bash
 docker compose up -d --build
+docker compose exec app composer install --no-dev --optimize-autoloader
 docker compose exec app php artisan key:generate   # если APP_KEY пустой
 docker compose exec app php artisan migrate --seed
 npm install
