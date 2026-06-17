@@ -103,15 +103,21 @@ final class InternalRequestParser implements Parser
             );
         }
 
+        $rating = $this->ratingValue($ratingData);
+        $ratingsCount = $this->intValue($ratingData['ratingCount'] ?? 0);
+        $reviewsCount = $this->intValue($ratingData['reviewCount'] ?? 0);
+
+        $this->ensureConsistentRating($reviews, $rating, $ratingsCount, $reviewsCount);
+
         return new OrganizationDto(
             sourceUrl: $normalized->sourceUrl,
             normalizedUrl: $normalized->normalizedUrl,
             objectId: $normalized->objectId,
             title: $this->stringOrNull($organizationItem['title'] ?? null),
             address: $this->stringOrNull($organizationItem['address'] ?? $organizationItem['fullAddress'] ?? null),
-            rating: $this->ratingValue($ratingData),
-            ratingsCount: $this->intValue($ratingData['ratingCount'] ?? 0),
-            reviewsCount: $this->intValue($ratingData['reviewCount'] ?? 0),
+            rating: $rating,
+            ratingsCount: $ratingsCount,
+            reviewsCount: $reviewsCount,
             reviews: $reviews,
             parserVersion: (string) config('yandex-maps.parser_version', '1.0.0'),
             rawPayload: $rawPayload,
@@ -406,6 +412,32 @@ final class InternalRequestParser implements Parser
         }
 
         return 0;
+    }
+
+    /**
+     * Fails partial Yandex responses instead of saving visible reviews with zero summary counters
+     *
+     * @param  array<int, ReviewDto>  $reviews
+     *
+     * @throws ChangedSchemaException
+     */
+    private function ensureConsistentRating(
+        array $reviews,
+        ?float $rating,
+        int $ratingsCount,
+        int $reviewsCount,
+    ): void {
+        if ($reviews === []) {
+            return;
+        }
+
+        if ($rating !== null && $rating > 0.0 && $ratingsCount > 0 && $reviewsCount > 0) {
+            return;
+        }
+
+        throw new ChangedSchemaException(
+            'Yandex Maps organization rating data is inconsistent with reviews payload',
+        );
     }
 
     /**

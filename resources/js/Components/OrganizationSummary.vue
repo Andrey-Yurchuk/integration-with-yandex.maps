@@ -65,6 +65,19 @@ const formatTimestamp = (value: string | null): string | null => {
 
 const lastSyncStartedAt = computed(() => formatTimestamp(props.organization?.last_sync_started_at ?? null));
 const lastSyncFinishedAt = computed(() => formatTimestamp(props.organization?.last_sync_finished_at ?? null));
+const averageRating = computed(() => {
+    if (! props.organization) {
+        return '—';
+    }
+
+    if (props.organization.rating !== null) {
+        return props.organization.rating;
+    }
+
+    return props.organization.sync_status === 'queued' || props.organization.sync_status === 'running' || props.organization.sync_status === 'awaiting'
+        ? 0
+        : '—';
+});
 </script>
 
 <template>
@@ -177,7 +190,7 @@ const lastSyncFinishedAt = computed(() => formatTimestamp(props.organization?.la
                             Average rating
                         </p>
                         <p class="mt-0.5 text-slate-900">
-                            {{ organization.rating ?? '—' }}
+                            {{ averageRating }}
                         </p>
                     </div>
                     <div>

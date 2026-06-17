@@ -222,6 +222,34 @@ final class InternalRequestParserTest extends TestCase
         $this->assertSame([], $result->reviews);
     }
 
+    public function test_inconsistent_zero_rating_data_with_reviews_throws_changed_schema_exception(): void
+    {
+        $this->fakeOrganizationPages([
+            self::REVIEWS_URL => FixturePage::html(FixturePage::organizationState([
+                'stack' => [
+                    [
+                        'results' => [
+                            'items' => [
+                                [
+                                    'ratingData' => [
+                                        'ratingCount' => 0,
+                                        'ratingValue' => 0,
+                                        'reviewCount' => 0,
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ])),
+        ]);
+
+        $this->expectException(ChangedSchemaException::class);
+        $this->expectExceptionMessage('Yandex Maps organization rating data is inconsistent with reviews payload');
+
+        $this->parser->parse(self::ORG_URL);
+    }
+
     public function test_invalid_url_throws_invalid_url_exception(): void
     {
         $this->expectException(InvalidUrlException::class);
