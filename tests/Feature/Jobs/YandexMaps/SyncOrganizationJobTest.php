@@ -432,8 +432,31 @@ final class SyncOrganizationJobTest extends TestCase
         $this->assertSame(BlockedException::class, $syncRun->meta['exception']);
         $this->assertSame('delayed_retry', $syncRun->meta['fallback_strategy']);
         $this->assertSame(1, $syncRun->meta['blocked_attempts']);
-        $this->assertNotNull($syncRun->meta['blocked_until']);
+        $this->assertSame($organization->blocked_until->toIso8601String(), $syncRun->meta['blocked_until']);
         $this->assertNull($syncRun->meta['retry_stopped_reason']);
+    }
+
+    public function test_blocked_exception_is_not_rethrown_for_queue_retry(): void
+    {
+        $organization = Organization::factory()->create([
+            'sync_status' => OrganizationSyncStatus::Queued,
+            'blocked_attempts' => 0,
+            'blocked_until' => null,
+        ]);
+
+        $parser = (new FakeParser)->throws(new BlockedException('Yandex Maps blocked the parser request'));
+
+        try {
+            $this->runJob($organization, $parser);
+        } catch (BlockedException $exception) {
+            $this->fail('BlockedException should be converted into delayed retry state, not queue retry.');
+        }
+
+        $organization->refresh();
+
+        $this->assertSame(OrganizationSyncStatus::Failed, $organization->sync_status);
+        $this->assertSame(1, $organization->blocked_attempts);
+        $this->assertNotNull($organization->blocked_until);
     }
 
     public function test_increases_blocked_attempts_on_repeated_blocked_exception(): void
