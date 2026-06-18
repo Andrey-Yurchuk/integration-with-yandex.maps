@@ -45,6 +45,26 @@ final class ReviewRepository
     }
 
     /**
+     * Hides organization reviews missing from the provided content hash list
+     *
+     * @param  array<int, string>  $contentHashes
+     */
+    public function hideMissingForOrganization(Organization $organization, array $contentHashes): int
+    {
+        $now = now();
+
+        return Review::query()
+            ->where('organization_id', $organization->id)
+            ->where('is_visible', true)
+            ->whereNotIn('content_hash', $contentHashes)
+            ->update([
+                'is_visible' => false,
+                'missing_since' => $now,
+                'updated_at' => $now,
+            ]);
+    }
+
+    /**
      * Upserts parser reviews for an organization without creating duplicates
      *
      * @param  array<int, ReviewDto>  $reviewDtos

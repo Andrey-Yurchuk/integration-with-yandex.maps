@@ -210,4 +210,146 @@ final class ReviewRepositoryTest extends TestCase
         $this->assertSame(1, $queryCount, 'Expected exactly 1 SQL query for bulk upsert');
         $this->assertDatabaseCount('reviews', 600);
     }
+
+    public function test_hide_missing_for_organization_hides_reviews_not_in_content_hash_list(): void
+    {
+        $organization = Organization::factory()->create();
+
+        $review1 = Review::factory()->for($organization)->create([
+            'content_hash' => 'hash-1',
+            'is_visible' => true,
+            'missing_since' => null,
+        ]);
+
+        $review2 = Review::factory()->for($organization)->create([
+            'content_hash' => 'hash-2',
+            'is_visible' => true,
+            'missing_since' => null,
+        ]);
+
+        $review3 = Review::factory()->for($organization)->create([
+            'content_hash' => 'hash-3',
+            'is_visible' => true,
+            'missing_since' => null,
+        ]);
+
+        $hidden = $this->repository->hideMissingForOrganization($organization, ['hash-1', 'hash-3']);
+
+        $this->assertSame(1, $hidden);
+
+        $review1->refresh();
+        $review2->refresh();
+        $review3->refresh();
+
+        $this->assertTrue($review1->is_visible);
+        $this->assertNull($review1->missing_since);
+
+        $this->assertFalse($review2->is_visible);
+        $this->assertNotNull($review2->missing_since);
+
+        $this->assertTrue($review3->is_visible);
+        $this->assertNull($review3->missing_since);
+    }
+
+    public function test_hide_missing_for_organization_does_not_hide_reviews_in_content_hash_list(): void
+    {
+        $organization = Organization::factory()->create();
+
+        $review = Review::factory()->for($organization)->create([
+            'content_hash' => 'hash-1',
+            'is_visible' => true,
+            'missing_since' => null,
+        ]);
+
+        $hidden = $this->repository->hideMissingForOrganization($organization, ['hash-1']);
+
+        $this->assertSame(0, $hidden);
+
+        $review->refresh();
+        $this->assertTrue($review->is_visible);
+        $this->assertNull($review->missing_since);
+    }
+
+    public function test_hide_missing_for_organization_does_not_affect_other_organizations(): void
+    {
+        $organization1 = Organization::factory()->create();
+        $organization2 = Organization::factory()->create();
+
+        $review1 = Review::factory()->for($organization1)->create([
+            'content_hash' => 'hash-1',
+            'is_visible' => true,
+        ]);
+
+        $review2 = Review::factory()->for($organization2)->create([
+            'content_hash' => 'hash-2',
+            'is_visible' => true,
+        ]);
+
+        $hidden = $this->repository->hideMissingForOrganization($organization1, []);
+
+        $this->assertSame(1, $hidden);
+
+        $review1->refresh();
+        $review2->refresh();
+
+        $this->assertFalse($review1->is_visible);
+        $this->assertTrue($review2->is_visible);
+    }
+
+    public function test_hide_missing_for_organization_with_empty_list_hides_all_visible_reviews(): void
+    {
+        $organization = Organization::factory()->create();
+
+        Review::factory()->for($organization)->count(3)->create([
+            'is_visible' => true,
+            'missing_since' => null,
+        ]);
+
+        $hidden = $this->repository->hideMissingForOrganization($organization, []);
+
+        $this->assertSame(3, $hidden);
+
+        $visibleCount = Review::query()
+            ->where('organization_id', $organization->id)
+            ->where('is_visible', true)
+            ->count();
+
+        $this->assertSame(0, $visibleCount);
+    }
+
+    public function test_hide_missing_for_organization_does_not_update_already_hidden_reviews(): void
+    {
+        $organization = Organization::factory()->create();
+
+        $visibleReview = Review::factory()->for($organization)->create([
+            'content_hash' => 'hash-visible',
+            'is_visible' => true,
+            'missing_since' => null,
+        ]);
+
+        $alreadyHiddenReview = Review::factory()->for($organization)->create([
+            'content_hash' => 'hash-hidden',
+            'is_visible' => false,
+            'missing_since' => now()->subDays(5),
+        ]);
+
+        $originalMissingSince = $alreadyHiddenReview->missing_since;
+        $originalUpdatedAt = $alreadyHiddenReview->updated_at;
+
+        $this->travel(1)->hour();
+
+        $hidden = $this->repository->hideMissingForOrganization($organization, []);
+
+        $this->assertSame(1, $hidden);
+
+        $visibleReview->refresh();
+        $alreadyHiddenReview->refresh();
+
+        $this->assertFalse($visibleReview->is_visible);
+        $this->assertNotNull($visibleReview->missing_since);
+
+        $this->assertFalse($alreadyHiddenReview->is_visible);
+        $this->assertTrue($alreadyHiddenReview->missing_since->equalTo($originalMissingSince));
+        $this->assertTrue($alreadyHiddenReview->updated_at->equalTo($originalUpdatedAt));
+    }
 }
