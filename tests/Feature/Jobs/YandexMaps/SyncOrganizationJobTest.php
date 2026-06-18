@@ -17,6 +17,7 @@ use App\Models\Review;
 use App\Repositories\Organizations\OrganizationRepository;
 use App\Repositories\Organizations\ReviewRepository;
 use App\Repositories\Organizations\SyncRunRepository;
+use App\Services\YandexMaps\BlockPolicy;
 use App\Services\YandexMaps\Parser;
 use DateTimeImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -395,6 +396,128 @@ final class SyncOrganizationJobTest extends TestCase
         $this->assertSame(OrganizationSyncStatus::Failed, $organization->sync_status);
     }
 
+    public function test_marks_blocked_state_on_blocked_exception(): void
+    {
+        $organization = Organization::factory()->create([
+            'sync_status' => OrganizationSyncStatus::Queued,
+            'blocked_attempts' => 0,
+            'blocked_until' => null,
+        ]);
+
+        $parser = (new FakeParser)->throws(new BlockedException('Yandex Maps blocked the parser request'));
+
+        $this->runJob($organization, $parser);
+
+        $organization->refresh();
+        $syncRun = OrganizationSyncRun::query()
+            ->where('organization_id', $organization->id)
+            ->firstOrFail();
+
+        $this->assertSame(OrganizationSyncStatus::Failed, $organization->sync_status);
+        $this->assertSame('Yandex Maps blocked the parser request', $organization->last_sync_error);
+        $this->assertSame(1, $organization->blocked_attempts);
+        $this->assertNotNull($organization->blocked_until);
+        $this->assertTrue($organization->blocked_until->isFuture());
+
+        $this->assertSame(OrganizationSyncStatus::Failed, $syncRun->status);
+        $this->assertSame('blocked', $syncRun->error_type);
+        $this->assertSame(BlockedException::class, $syncRun->meta['exception']);
+        $this->assertSame('delayed_retry', $syncRun->meta['fallback_strategy']);
+        $this->assertSame(1, $syncRun->meta['blocked_attempts']);
+        $this->assertNotNull($syncRun->meta['blocked_until']);
+        $this->assertNull($syncRun->meta['retry_stopped_reason']);
+    }
+
+    public function test_increases_blocked_attempts_on_repeated_blocked_exception(): void
+    {
+        $organization = Organization::factory()->create([
+            'sync_status' => OrganizationSyncStatus::Queued,
+            'blocked_attempts' => 1,
+            'blocked_until' => now()->subMinute(),
+        ]);
+
+        $firstBlockedUntil = $organization->blocked_until;
+
+        $parser = (new FakeParser)->throws(new BlockedException('Yandex Maps blocked the parser request'));
+
+        $this->runJob($organization, $parser);
+
+        $organization->refresh();
+
+        $this->assertSame(2, $organization->blocked_attempts);
+        $this->assertNotNull($organization->blocked_until);
+        $this->assertTrue($organization->blocked_until->greaterThan($firstBlockedUntil));
+    }
+
+    public function test_marks_retry_stopped_when_max_attempts_exceeded(): void
+    {
+        $maxAttempts = config('yandex-maps.blocked_retry.max_attempts');
+
+        $organization = Organization::factory()->create([
+            'sync_status' => OrganizationSyncStatus::Queued,
+            'blocked_attempts' => $maxAttempts - 1,
+            'blocked_until' => now()->subMinute(),
+        ]);
+
+        $parser = (new FakeParser)->throws(new BlockedException('Yandex Maps blocked the parser request'));
+
+        $this->runJob($organization, $parser);
+
+        $organization->refresh();
+        $syncRun = OrganizationSyncRun::query()
+            ->where('organization_id', $organization->id)
+            ->firstOrFail();
+
+        $this->assertSame($maxAttempts, $organization->blocked_attempts);
+        $this->assertSame('max_attempts_exceeded', $syncRun->meta['retry_stopped_reason']);
+    }
+
+    public function test_clears_blocked_state_after_successful_sync(): void
+    {
+        $organization = Organization::factory()->create([
+            'sync_status' => OrganizationSyncStatus::Queued,
+            'blocked_attempts' => 2,
+            'blocked_until' => now()->addHours(1),
+        ]);
+
+        $parser = (new FakeParser)->returns($this->organizationDto());
+
+        $this->runJob($organization, $parser);
+
+        $organization->refresh();
+
+        $this->assertSame(OrganizationSyncStatus::Succeeded, $organization->sync_status);
+        $this->assertSame(0, $organization->blocked_attempts);
+        $this->assertNull($organization->blocked_until);
+    }
+
+    public function test_other_domain_exceptions_do_not_change_blocked_state(): void
+    {
+        $organization = Organization::factory()->create([
+            'sync_status' => OrganizationSyncStatus::Queued,
+            'blocked_attempts' => 0,
+            'blocked_until' => null,
+        ]);
+
+        $parser = (new FakeParser)->throws(new UnavailableException('Organization page is unavailable'));
+
+        $this->runJob($organization, $parser);
+
+        $organization->refresh();
+
+        $this->assertSame(OrganizationSyncStatus::Failed, $organization->sync_status);
+        $this->assertSame(0, $organization->blocked_attempts);
+        $this->assertNull($organization->blocked_until);
+
+        $syncRun = OrganizationSyncRun::query()
+            ->where('organization_id', $organization->id)
+            ->firstOrFail();
+
+        $this->assertArrayNotHasKey('fallback_strategy', $syncRun->meta);
+        $this->assertArrayNotHasKey('blocked_attempts', $syncRun->meta);
+        $this->assertArrayNotHasKey('blocked_until', $syncRun->meta);
+    }
+
     private function runJob(Organization $organization, Parser $parser): void
     {
         $job = new SyncOrganizationJob($organization->id);
@@ -404,6 +527,7 @@ final class SyncOrganizationJobTest extends TestCase
             app(OrganizationRepository::class),
             app(ReviewRepository::class),
             app(SyncRunRepository::class),
+            app(BlockPolicy::class),
         );
     }
 
