@@ -65,6 +65,24 @@ final class ReviewRepository
     }
 
     /**
+     * Extracts content hashes from review DTOs
+     *
+     * @param  array<int, ReviewDto>  $reviewDtos
+     * @return array<int, string>
+     */
+    public function extractContentHashes(array $reviewDtos): array
+    {
+        $hashes = [];
+
+        foreach ($reviewDtos as $reviewDto) {
+            $attributes = $this->attributesFromDto($reviewDto);
+            $hashes[] = $attributes['content_hash'];
+        }
+
+        return $hashes;
+    }
+
+    /**
      * Upserts parser reviews for an organization without creating duplicates
      *
      * @param  array<int, ReviewDto>  $reviewDtos
