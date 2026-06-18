@@ -7,6 +7,8 @@ use App\Jobs\YandexMaps\SyncOrganizationJob;
 use App\Models\Organization;
 use App\Models\OrganizationSyncRun;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
@@ -235,6 +237,172 @@ final class RetryBlockedSyncsCommandTest extends TestCase
             ->expectsOutput('Found 2 blocked organization(s) ready for retry.')
             ->expectsOutput('Queued: 1')
             ->expectsOutput('Skipped (max attempts exceeded): 1')
+            ->assertExitCode(0);
+
+        Queue::assertPushed(SyncOrganizationJob::class, 1);
+    }
+
+    public function test_uses_config_default_limit_when_option_not_provided(): void
+    {
+        Queue::fake();
+
+        config()->set('yandex-maps.blocked_retry.command_limit', 2);
+
+        for ($i = 0; $i < 5; $i++) {
+            $organization = Organization::factory()->create([
+                'sync_status' => OrganizationSyncStatus::Failed,
+                'blocked_attempts' => 1,
+                'blocked_until' => now()->subMinute(),
+            ]);
+
+            OrganizationSyncRun::factory()->for($organization)->create([
+                'status' => OrganizationSyncStatus::Failed,
+                'error_type' => 'blocked',
+            ]);
+        }
+
+        $this->artisan('yandex-maps:retry-blocked')
+            ->expectsOutput('Found 2 blocked organization(s) ready for retry.')
+            ->expectsOutput('Queued: 2')
+            ->assertExitCode(0);
+
+        Queue::assertPushed(SyncOrganizationJob::class, 2);
+    }
+
+    public function test_limit_option_overrides_config_default(): void
+    {
+        Queue::fake();
+
+        config()->set('yandex-maps.blocked_retry.command_limit', 10);
+
+        for ($i = 0; $i < 5; $i++) {
+            $organization = Organization::factory()->create([
+                'sync_status' => OrganizationSyncStatus::Failed,
+                'blocked_attempts' => 1,
+                'blocked_until' => now()->subMinute(),
+            ]);
+
+            OrganizationSyncRun::factory()->for($organization)->create([
+                'status' => OrganizationSyncStatus::Failed,
+                'error_type' => 'blocked',
+            ]);
+        }
+
+        $this->artisan('yandex-maps:retry-blocked', ['--limit' => 2])
+            ->expectsOutput('Found 2 blocked organization(s) ready for retry.')
+            ->expectsOutput('Queued: 2')
+            ->assertExitCode(0);
+
+        Queue::assertPushed(SyncOrganizationJob::class, 2);
+    }
+
+    public function test_stops_when_circuit_breaker_already_open(): void
+    {
+        Cache::shouldReceive('has')
+            ->with('yandex-maps:blocked-retry:circuit-open')
+            ->once()
+            ->andReturn(true);
+
+        Queue::fake();
+
+        $organization = Organization::factory()->create([
+            'sync_status' => OrganizationSyncStatus::Failed,
+            'blocked_attempts' => 1,
+            'blocked_until' => now()->subMinute(),
+        ]);
+
+        OrganizationSyncRun::factory()->for($organization)->create([
+            'status' => OrganizationSyncStatus::Failed,
+            'error_type' => 'blocked',
+        ]);
+
+        $this->artisan('yandex-maps:retry-blocked')
+            ->expectsOutput('Circuit breaker is open. Retry blocked syncs temporarily disabled.')
+            ->assertExitCode(0);
+
+        Queue::assertNothingPushed();
+    }
+
+    public function test_opens_circuit_breaker_when_threshold_exceeded(): void
+    {
+        Cache::shouldReceive('has')
+            ->with('yandex-maps:blocked-retry:circuit-open')
+            ->once()
+            ->andReturn(false);
+
+        Cache::shouldReceive('put')
+            ->with(
+                'yandex-maps:blocked-retry:circuit-open',
+                true,
+                \Mockery::type(Carbon::class)
+            )
+            ->once();
+
+        Queue::fake();
+
+        config()->set('yandex-maps.blocked_retry.circuit_breaker.threshold', 3);
+        config()->set('yandex-maps.blocked_retry.circuit_breaker.window_minutes', 5);
+
+        // Create 3 recent blocked events to meet threshold
+        for ($i = 0; $i < 3; $i++) {
+            $org = Organization::factory()->create([
+                'sync_status' => OrganizationSyncStatus::Failed,
+            ]);
+
+            OrganizationSyncRun::factory()->for($org)->create([
+                'status' => OrganizationSyncStatus::Failed,
+                'error_type' => 'blocked',
+                'updated_at' => now()->subMinutes(2),
+            ]);
+        }
+
+        $this->artisan('yandex-maps:retry-blocked')
+            ->expectsOutput('Too many recent blocked events. Circuit breaker opened.')
+            ->assertExitCode(0);
+
+        Queue::assertNothingPushed();
+    }
+
+    public function test_works_normally_when_blocked_events_below_threshold(): void
+    {
+        Cache::shouldReceive('has')
+            ->with('yandex-maps:blocked-retry:circuit-open')
+            ->once()
+            ->andReturn(false);
+
+        Queue::fake();
+
+        config()->set('yandex-maps.blocked_retry.circuit_breaker.threshold', 10);
+        config()->set('yandex-maps.blocked_retry.circuit_breaker.window_minutes', 5);
+
+        // Create 2 recent blocked events (below threshold of 10)
+        for ($i = 0; $i < 2; $i++) {
+            $org = Organization::factory()->create([
+                'sync_status' => OrganizationSyncStatus::Failed,
+            ]);
+
+            OrganizationSyncRun::factory()->for($org)->create([
+                'status' => OrganizationSyncStatus::Failed,
+                'error_type' => 'blocked',
+                'updated_at' => now()->subMinutes(2),
+            ]);
+        }
+
+        // Create a queueable organization
+        $organization = Organization::factory()->create([
+            'sync_status' => OrganizationSyncStatus::Failed,
+            'blocked_attempts' => 1,
+            'blocked_until' => now()->subMinute(),
+        ]);
+
+        OrganizationSyncRun::factory()->for($organization)->create([
+            'status' => OrganizationSyncStatus::Failed,
+            'error_type' => 'blocked',
+        ]);
+
+        $this->artisan('yandex-maps:retry-blocked')
+            ->expectsOutput('Found 1 blocked organization(s) ready for retry.')
+            ->expectsOutput('Queued: 1')
             ->assertExitCode(0);
 
         Queue::assertPushed(SyncOrganizationJob::class, 1);
