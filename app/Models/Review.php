@@ -11,6 +11,9 @@ use Illuminate\Support\Carbon;
 
 /**
  * @property Carbon|null $reviewed_at
+ * @property Carbon|null $last_seen_at
+ * @property Carbon|null $missing_since
+ * @property bool $is_visible
  */
 #[Fillable([
     'organization_id',
@@ -22,6 +25,9 @@ use Illuminate\Support\Carbon;
     'text',
     'rating',
     'raw_payload',
+    'last_seen_at',
+    'missing_since',
+    'is_visible',
 ])]
 class Review extends Model
 {
@@ -34,6 +40,9 @@ class Review extends Model
             'reviewed_at' => 'datetime',
             'rating' => 'integer',
             'raw_payload' => 'array',
+            'last_seen_at' => 'datetime',
+            'missing_since' => 'datetime',
+            'is_visible' => 'boolean',
         ];
     }
 
