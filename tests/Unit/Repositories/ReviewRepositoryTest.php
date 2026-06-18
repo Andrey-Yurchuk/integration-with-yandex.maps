@@ -31,16 +31,47 @@ final class ReviewRepositoryTest extends TestCase
         Review::factory()->for($organization)->create([
             'reviewed_at' => now()->subDays(2),
             'content_hash' => hash('sha256', 'older'),
+            'is_visible' => true,
         ]);
         Review::factory()->for($organization)->create([
             'reviewed_at' => now()->subDay(),
             'content_hash' => hash('sha256', 'newer'),
+            'is_visible' => true,
         ]);
 
         $page = $this->repository->paginate($organization, 50);
 
         $this->assertSame(2, $page->total());
         $this->assertTrue($page->items()[0]->reviewed_at->greaterThan($page->items()[1]->reviewed_at));
+    }
+
+    public function test_paginate_returns_only_visible_reviews(): void
+    {
+        $organization = Organization::factory()->create();
+
+        Review::factory()->for($organization)->create([
+            'content_hash' => hash('sha256', 'visible-1'),
+            'is_visible' => true,
+        ]);
+        Review::factory()->for($organization)->create([
+            'content_hash' => hash('sha256', 'visible-2'),
+            'is_visible' => true,
+        ]);
+        Review::factory()->for($organization)->create([
+            'content_hash' => hash('sha256', 'hidden-1'),
+            'is_visible' => false,
+        ]);
+        Review::factory()->for($organization)->create([
+            'content_hash' => hash('sha256', 'hidden-2'),
+            'is_visible' => false,
+        ]);
+
+        $page = $this->repository->paginateForOrganization($organization);
+
+        $this->assertSame(2, $page->total());
+        foreach ($page->items() as $review) {
+            $this->assertTrue($review->is_visible);
+        }
     }
 
     public function test_delete_for_organization_removes_all_reviews(): void

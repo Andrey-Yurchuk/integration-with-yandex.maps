@@ -134,6 +134,43 @@ final class OrganizationReviewsTest extends TestCase
             ->assertJsonCount(0, 'data');
     }
 
+    public function test_endpoint_does_not_return_hidden_reviews(): void
+    {
+        $user = User::factory()->create();
+        $organization = Organization::factory()->for($user)->create();
+
+        Review::factory()->for($organization)->create([
+            'content_hash' => hash('sha256', 'visible-1'),
+            'external_id' => 'visible-1',
+            'is_visible' => true,
+        ]);
+        Review::factory()->for($organization)->create([
+            'content_hash' => hash('sha256', 'visible-2'),
+            'external_id' => 'visible-2',
+            'is_visible' => true,
+        ]);
+        Review::factory()->for($organization)->create([
+            'content_hash' => hash('sha256', 'hidden-1'),
+            'external_id' => 'hidden-1',
+            'is_visible' => false,
+        ]);
+        Review::factory()->for($organization)->create([
+            'content_hash' => hash('sha256', 'hidden-2'),
+            'external_id' => 'hidden-2',
+            'is_visible' => false,
+        ]);
+
+        $response = $this->actingAs($user)->getJson('/organization/reviews');
+
+        $response->assertOk()
+            ->assertJsonPath('meta.total', 2)
+            ->assertJsonCount(2, 'data');
+
+        foreach ($response->json('data') as $review) {
+            $this->assertContains($review['external_id'], ['visible-1', 'visible-2']);
+        }
+    }
+
     private function seedReviews(Organization $organization, int $count): void
     {
         for ($index = 0; $index < $count; $index++) {

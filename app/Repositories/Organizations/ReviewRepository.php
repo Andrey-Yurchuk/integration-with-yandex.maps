@@ -21,6 +21,7 @@ final class ReviewRepository
     ): LengthAwarePaginator {
         return Review::query()
             ->where('organization_id', $organization->id)
+            ->where('is_visible', true)
             ->orderByDesc('reviewed_at')
             ->orderByDesc('id')
             ->paginate(perPage: $perPage, page: $page);
