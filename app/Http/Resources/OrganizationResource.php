@@ -33,6 +33,7 @@ final class OrganizationResource extends JsonResource
             'last_sync_started_at' => $this->resource->last_sync_started_at?->toIso8601String(),
             'last_sync_finished_at' => $this->resource->last_sync_finished_at?->toIso8601String(),
             'last_sync_error' => $this->resource->last_sync_error,
+            'blocked_until' => $this->resource->blocked_until?->toIso8601String(),
         ];
     }
 }

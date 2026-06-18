@@ -36,6 +36,8 @@ class OrganizationFactory extends Factory
             'last_sync_started_at' => null,
             'last_sync_finished_at' => null,
             'last_sync_error' => null,
+            'blocked_attempts' => 0,
+            'blocked_until' => null,
             'parser_version' => null,
         ];
     }

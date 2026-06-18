@@ -16,6 +16,8 @@ use Illuminate\Support\Carbon;
  * @property OrganizationSyncStatus $sync_status
  * @property Carbon|null $last_sync_started_at
  * @property Carbon|null $last_sync_finished_at
+ * @property int $blocked_attempts
+ * @property Carbon|null $blocked_until
  * @property-read OrganizationSyncRun|null $syncRun
  */
 #[Fillable([
@@ -33,6 +35,8 @@ use Illuminate\Support\Carbon;
     'last_sync_started_at',
     'last_sync_finished_at',
     'last_sync_error',
+    'blocked_attempts',
+    'blocked_until',
     'parser_version',
 ])]
 class Organization extends Model
@@ -50,6 +54,8 @@ class Organization extends Model
             'reviews_count' => 'integer',
             'last_sync_started_at' => 'datetime',
             'last_sync_finished_at' => 'datetime',
+            'blocked_attempts' => 'integer',
+            'blocked_until' => 'datetime',
         ];
     }
 
