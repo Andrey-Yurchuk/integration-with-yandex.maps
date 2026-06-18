@@ -83,6 +83,22 @@ final class SyncOrganizationJob implements ShouldQueue
                         $parsed->reviews,
                     );
 
+                    $isCompleteSnapshot = $parsed->reviewsCount <= count($parsed->reviews);
+                    $reviewsHidden = 0;
+                    $missingReviewsProcessed = false;
+                    $missingReviewsSkippedReason = null;
+
+                    if ($isCompleteSnapshot) {
+                        $contentHashes = $reviews->extractContentHashes($parsed->reviews);
+                        $reviewsHidden = $reviews->hideMissingForOrganization(
+                            $organization,
+                            $contentHashes,
+                        );
+                        $missingReviewsProcessed = true;
+                    } else {
+                        $missingReviewsSkippedReason = 'incomplete_reviews_snapshot';
+                    }
+
                     $syncRuns->markSucceeded($syncRun, [
                         'reviews_found' => count($parsed->reviews),
                         'reviews_saved' => $reviewsSaved,
@@ -91,6 +107,10 @@ final class SyncOrganizationJob implements ShouldQueue
                         'meta' => [
                             'parser_version' => $parsed->parserVersion ??
                                 config('yandex-maps.parser_version'),
+                            'reviews_complete_snapshot' => $isCompleteSnapshot,
+                            'reviews_hidden' => $reviewsHidden,
+                            'missing_reviews_processed' => $missingReviewsProcessed,
+                            'missing_reviews_skipped_reason' => $missingReviewsSkippedReason,
                         ],
                     ]);
 

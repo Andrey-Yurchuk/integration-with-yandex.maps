@@ -13,6 +13,7 @@ use App\Exceptions\YandexMaps\UnavailableException;
 use App\Jobs\YandexMaps\SyncOrganizationJob;
 use App\Models\Organization;
 use App\Models\OrganizationSyncRun;
+use App\Models\Review;
 use App\Repositories\Organizations\OrganizationRepository;
 use App\Repositories\Organizations\ReviewRepository;
 use App\Repositories\Organizations\SyncRunRepository;
@@ -244,6 +245,154 @@ final class SyncOrganizationJobTest extends TestCase
         $job = new SyncOrganizationJob(1);
 
         $this->assertSame(300, $job->timeout);
+    }
+
+    public function test_hides_missing_reviews_after_complete_sync(): void
+    {
+        $organization = Organization::factory()->create([
+            'sync_status' => OrganizationSyncStatus::Queued,
+        ]);
+
+        $oldReview = app(ReviewRepository::class)->upsertForOrganization($organization, [
+            new ReviewDto('old-1', 'OldAuthor', null, new DateTimeImmutable('2023-01-01'), 'Old review', 5, null),
+        ]);
+
+        $this->assertDatabaseHas('reviews', [
+            'organization_id' => $organization->id,
+            'author_name' => 'OldAuthor',
+            'is_visible' => true,
+        ]);
+
+        $completeDto = new OrganizationDto(
+            sourceUrl: 'https://yandex.ru/maps/org/cafe_pushkin/123456789012/',
+            normalizedUrl: 'https://yandex.ru/maps/org/cafe_pushkin/123456789012/',
+            objectId: '123456789012',
+            title: 'Cafe Pushkin',
+            address: 'Moscow, Tverskoy Blvd, 26A',
+            rating: 4.5,
+            ratingsCount: 1200,
+            reviewsCount: 3,
+            reviews: [
+                new ReviewDto('review-1', 'Alice', null, new DateTimeImmutable('2024-01-01'), 'Great', 5, ['id' => 'review-1']),
+                new ReviewDto('review-2', 'Bob', null, new DateTimeImmutable('2024-02-01'), 'Good', 4, ['id' => 'review-2']),
+                new ReviewDto(null, 'Charlie', null, new DateTimeImmutable('2024-03-01'), 'Fine', 3, null),
+            ],
+            parserVersion: 'fake-1.0',
+        );
+
+        $parser = (new FakeParser)->returns($completeDto);
+
+        $this->runJob($organization, $parser);
+
+        $this->assertDatabaseHas('reviews', [
+            'organization_id' => $organization->id,
+            'author_name' => 'OldAuthor',
+            'is_visible' => false,
+        ]);
+
+        $oldReviewRefreshed = app(ReviewRepository::class)->paginateForOrganization($organization)
+            ->items();
+
+        $hiddenReview = Review::query()
+            ->where('organization_id', $organization->id)
+            ->where('author_name', 'OldAuthor')
+            ->first();
+
+        $this->assertFalse($hiddenReview->is_visible);
+        $this->assertNotNull($hiddenReview->missing_since);
+
+        $syncRun = OrganizationSyncRun::query()
+            ->where('organization_id', $organization->id)
+            ->latest()
+            ->first();
+
+        $this->assertTrue($syncRun->meta['missing_reviews_processed']);
+        $this->assertSame(1, $syncRun->meta['reviews_hidden']);
+        $this->assertTrue($syncRun->meta['reviews_complete_snapshot']);
+        $this->assertNull($syncRun->meta['missing_reviews_skipped_reason']);
+    }
+
+    public function test_does_not_hide_reviews_when_sync_is_incomplete(): void
+    {
+        $organization = Organization::factory()->create([
+            'sync_status' => OrganizationSyncStatus::Queued,
+        ]);
+
+        $oldReview = app(ReviewRepository::class)->upsertForOrganization($organization, [
+            new ReviewDto('old-1', 'OldAuthor', null, new DateTimeImmutable('2023-01-01'), 'Old review', 5, null),
+        ]);
+
+        $this->assertDatabaseHas('reviews', [
+            'organization_id' => $organization->id,
+            'author_name' => 'OldAuthor',
+            'is_visible' => true,
+        ]);
+
+        $incompleteDto = new OrganizationDto(
+            sourceUrl: 'https://yandex.ru/maps/org/cafe_pushkin/123456789012/',
+            normalizedUrl: 'https://yandex.ru/maps/org/cafe_pushkin/123456789012/',
+            objectId: '123456789012',
+            title: 'Cafe Pushkin',
+            address: 'Moscow, Tverskoy Blvd, 26A',
+            rating: 4.5,
+            ratingsCount: 1200,
+            reviewsCount: 1000,
+            reviews: [
+                new ReviewDto('review-1', 'Alice', null, new DateTimeImmutable('2024-01-01'), 'Great', 5, null),
+                new ReviewDto('review-2', 'Bob', null, new DateTimeImmutable('2024-02-01'), 'Good', 4, null),
+            ],
+            parserVersion: 'fake-1.0',
+        );
+
+        $parser = (new FakeParser)->returns($incompleteDto);
+
+        $this->runJob($organization, $parser);
+
+        $this->assertDatabaseHas('reviews', [
+            'organization_id' => $organization->id,
+            'author_name' => 'OldAuthor',
+            'is_visible' => true,
+        ]);
+
+        $syncRun = OrganizationSyncRun::query()
+            ->where('organization_id', $organization->id)
+            ->latest()
+            ->first();
+
+        $this->assertFalse($syncRun->meta['missing_reviews_processed']);
+        $this->assertSame(0, $syncRun->meta['reviews_hidden']);
+        $this->assertFalse($syncRun->meta['reviews_complete_snapshot']);
+        $this->assertSame('incomplete_reviews_snapshot', $syncRun->meta['missing_reviews_skipped_reason']);
+    }
+
+    public function test_does_not_hide_reviews_when_sync_fails(): void
+    {
+        $organization = Organization::factory()->create([
+            'sync_status' => OrganizationSyncStatus::Queued,
+        ]);
+
+        $oldReview = app(ReviewRepository::class)->upsertForOrganization($organization, [
+            new ReviewDto('old-1', 'OldAuthor', null, new DateTimeImmutable('2023-01-01'), 'Old review', 5, null),
+        ]);
+
+        $this->assertDatabaseHas('reviews', [
+            'organization_id' => $organization->id,
+            'author_name' => 'OldAuthor',
+            'is_visible' => true,
+        ]);
+
+        $parser = (new FakeParser)->throws(new BlockedException('Yandex Maps blocked the parser request'));
+
+        $this->runJob($organization, $parser);
+
+        $this->assertDatabaseHas('reviews', [
+            'organization_id' => $organization->id,
+            'author_name' => 'OldAuthor',
+            'is_visible' => true,
+        ]);
+
+        $organization->refresh();
+        $this->assertSame(OrganizationSyncStatus::Failed, $organization->sync_status);
     }
 
     private function runJob(Organization $organization, Parser $parser): void

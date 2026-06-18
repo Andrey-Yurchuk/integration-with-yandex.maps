@@ -21,6 +21,7 @@ final class ReviewRepository
     ): LengthAwarePaginator {
         return Review::query()
             ->where('organization_id', $organization->id)
+            ->where('is_visible', true)
             ->orderByDesc('reviewed_at')
             ->orderByDesc('id')
             ->paginate(perPage: $perPage, page: $page);
@@ -35,34 +36,6 @@ final class ReviewRepository
     }
 
     /**
-     * Upserts a review by external_id or content_hash without duplicates
-     *
-     * @param  array<string, mixed>  $attributes
-     */
-    public function save(Organization $organization, array $attributes): Review
-    {
-        $attributes['organization_id'] = $organization->id;
-        $attributes['content_hash'] ??= self::contentHash($attributes);
-
-        $existing = Review::query()
-            ->where('organization_id', $organization->id)
-            ->when(
-                ! empty($attributes['external_id']),
-                fn ($query) => $query->where('external_id', $attributes['external_id']),
-                fn ($query) => $query->where('content_hash', $attributes['content_hash']),
-            )
-            ->first();
-
-        if ($existing !== null) {
-            $existing->fill($attributes)->save();
-
-            return $existing->refresh();
-        }
-
-        return Review::query()->create($attributes);
-    }
-
-    /**
      * Deletes all reviews stored for the organization
      */
     public function deleteForOrganization(Organization $organization): int
@@ -73,20 +46,112 @@ final class ReviewRepository
     }
 
     /**
+     * Hides organization reviews missing from the provided content hash list
+     *
+     * @param  array<int, string>  $contentHashes
+     */
+    public function hideMissingForOrganization(Organization $organization, array $contentHashes): int
+    {
+        $now = now();
+
+        return Review::query()
+            ->where('organization_id', $organization->id)
+            ->where('is_visible', true)
+            ->whereNotIn('content_hash', $contentHashes)
+            ->update([
+                'is_visible' => false,
+                'missing_since' => $now,
+                'updated_at' => $now,
+            ]);
+    }
+
+    /**
+     * Extracts content hashes from review DTOs
+     *
+     * @param  array<int, ReviewDto>  $reviewDtos
+     * @return array<int, string>
+     */
+    public function extractContentHashes(array $reviewDtos): array
+    {
+        $hashes = [];
+
+        foreach ($reviewDtos as $reviewDto) {
+            $attributes = $this->attributesFromDto($reviewDto);
+            $hashes[] = $attributes['content_hash'];
+        }
+
+        return $hashes;
+    }
+
+    /**
      * Upserts parser reviews for an organization without creating duplicates
      *
      * @param  array<int, ReviewDto>  $reviewDtos
      */
     public function upsertForOrganization(Organization $organization, array $reviewDtos): int
     {
-        $saved = 0;
-
-        foreach ($reviewDtos as $reviewDto) {
-            $this->save($organization, $this->attributesFromDto($reviewDto));
-            $saved++;
+        if (empty($reviewDtos)) {
+            return 0;
         }
 
-        return $saved;
+        /** @var array<int, array<string, mixed>> $rows */
+        $rows = [];
+        $seenHashes = [];
+        $now = now();
+
+        foreach ($reviewDtos as $reviewDto) {
+            $attributes = $this->attributesFromDto($reviewDto);
+            $contentHash = $attributes['content_hash'];
+
+            if (isset($seenHashes[$contentHash])) {
+                continue;
+            }
+
+            $seenHashes[$contentHash] = true;
+
+            $row = [
+                'organization_id' => $organization->id,
+                'external_id' => $attributes['external_id'],
+                'content_hash' => $contentHash,
+                'author_name' => $attributes['author_name'],
+                'author_avatar_url' => $attributes['author_avatar_url'],
+                'reviewed_at' => $this->formatTimestamp($attributes['reviewed_at']),
+                'text' => $attributes['text'],
+                'rating' => $attributes['rating'],
+                'raw_payload' => $this->encodeJsonb($attributes['raw_payload']),
+                'last_seen_at' => $now,
+                'missing_since' => null,
+                'is_visible' => true,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+
+            $rows[] = $row;
+        }
+
+        if (empty($rows)) {
+            return 0;
+        }
+
+        Review::query()->upsert(
+            $rows,
+            ['organization_id', 'content_hash'],
+            [
+                'external_id',
+                'author_name',
+                'author_avatar_url',
+                'reviewed_at',
+                'text',
+                'rating',
+                'raw_payload',
+                'last_seen_at',
+                'missing_since',
+                'is_visible',
+                'updated_at',
+            ],
+        );
+
+        return count($rows);
     }
 
     /**
@@ -128,5 +193,33 @@ final class ReviewRepository
             (string) ($attributes['text'] ?? ''),
             (string) ($attributes['rating'] ?? ''),
         ]));
+    }
+
+    /**
+     * Formats timestamp for PostgreSQL bulk upsert
+     */
+    private function formatTimestamp(mixed $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        if ($value instanceof DateTimeInterface) {
+            return Carbon::parse($value)->toDateTimeString();
+        }
+
+        return (string) $value;
+    }
+
+    /**
+     * Encodes array to JSON string for PostgreSQL jsonb column
+     */
+    private function encodeJsonb(?array $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        return json_encode($value, JSON_THROW_ON_ERROR);
     }
 }
