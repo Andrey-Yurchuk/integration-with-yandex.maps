@@ -40,6 +40,7 @@ Artisan::command('yandex-maps:benchmark-review-upsert {--count=600 : Number of r
     $activeQueryCounter = null;
 
     DB::listen(static function () use (&$activeQueryCounter): void {
+        // @phpstan-ignore-next-line Counter is modified by reference in closure
         if ($activeQueryCounter !== null) {
             $activeQueryCounter++;
         }

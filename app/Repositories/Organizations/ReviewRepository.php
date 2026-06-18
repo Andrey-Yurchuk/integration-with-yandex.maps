@@ -94,6 +94,7 @@ final class ReviewRepository
             return 0;
         }
 
+        /** @var array<int, array<string, mixed>> $rows */
         $rows = [];
         $seenHashes = [];
         $now = now();
