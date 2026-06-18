@@ -13,6 +13,7 @@ use App\Models\OrganizationSyncRun;
 use App\Repositories\Organizations\OrganizationRepository;
 use App\Repositories\Organizations\ReviewRepository;
 use App\Repositories\Organizations\SyncRunRepository;
+use App\Services\YandexMaps\BlockPolicy;
 use App\Services\YandexMaps\Parser;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -44,6 +45,7 @@ final class SyncOrganizationJob implements ShouldQueue
         OrganizationRepository $organizations,
         ReviewRepository $reviews,
         SyncRunRepository $syncRuns,
+        BlockPolicy $blockPolicy,
     ): void {
         $lock = Cache::lock(
             $this->lockKey(),
@@ -70,6 +72,7 @@ final class SyncOrganizationJob implements ShouldQueue
                     $organizations,
                     $reviews,
                     $syncRuns,
+                    $blockPolicy,
                     $organization,
                     $syncRun,
                     $parsed,
@@ -115,6 +118,7 @@ final class SyncOrganizationJob implements ShouldQueue
                     ]);
 
                     $organizations->markSucceeded($organization);
+                    $blockPolicy->clear($organization);
                 });
             } catch (Throwable $exception) {
                 $this->failSync(
@@ -123,6 +127,7 @@ final class SyncOrganizationJob implements ShouldQueue
                     $syncRun,
                     $organizations,
                     $syncRuns,
+                    $blockPolicy,
                 );
 
                 if (! $this->isDomainException($exception)) {
@@ -217,6 +222,7 @@ final class SyncOrganizationJob implements ShouldQueue
         OrganizationSyncRun $syncRun,
         OrganizationRepository $organizations,
         SyncRunRepository $syncRuns,
+        BlockPolicy $blockPolicy,
     ): void {
         DB::transaction(function () use (
             $exception,
@@ -224,19 +230,38 @@ final class SyncOrganizationJob implements ShouldQueue
             $syncRun,
             $organizations,
             $syncRuns,
+            $blockPolicy,
         ): void {
+            $meta = [
+                'exception' => $exception::class,
+            ];
+
+            if ($exception instanceof BlockedException) {
+                $blockPolicy->markBlocked($organization);
+                $organization->refresh();
+
+                $meta['blocked_attempts'] = $organization->blocked_attempts;
+                $meta['blocked_until'] = $organization->blocked_until?->toIso8601String();
+                $meta['fallback_strategy'] = 'delayed_retry';
+                $meta['retry_stopped_reason'] = $blockPolicy->attemptsExceeded($organization)
+                    ? 'max_attempts_exceeded'
+                    : null;
+            }
+
+            $message = $exception instanceof BlockedException
+                ? $this->blockedSyncMessage($organization)
+                : $this->errorMessage($exception);
+
             $syncRuns->markFailed(
                 $syncRun,
                 $this->errorType($exception),
-                $this->errorMessage($exception),
-                [
-                    'exception' => $exception::class,
-                ],
+                $message,
+                $meta,
             );
 
             $organizations->markFailed(
                 $organization,
-                $this->errorMessage($exception),
+                $message,
             );
         });
     }
@@ -278,6 +303,13 @@ final class SyncOrganizationJob implements ShouldQueue
         }
 
         return 'Organization synchronization failed unexpectedly';
+    }
+
+    private function blockedSyncMessage(Organization $organization): string
+    {
+        $retryAt = $organization->blocked_until?->toIso8601String() ?? 'the scheduled cooldown';
+
+        return "Yandex Maps temporarily limited synchronization. Next retry is scheduled after {$retryAt}.";
     }
 
     private function failedErrorType(?Throwable $exception): string

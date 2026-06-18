@@ -107,7 +107,7 @@ final class ActivateOrganizationTest extends TestCase
             'yandex_object_id' => '2222222222',
             'title' => 'Second org',
             'sync_status' => OrganizationSyncStatus::Failed,
-            'last_sync_error' => 'Yandex Maps blocked the parser request',
+            'last_sync_error' => 'Yandex Maps temporarily limited synchronization. Next retry is scheduled after 2026-06-18T20:00:00+00:00.',
             'reviews_count' => 5,
         ]);
 
@@ -130,7 +130,7 @@ final class ActivateOrganizationTest extends TestCase
                 ->where('organization.id', $second->id)
                 ->where('organization.title', 'Second org')
                 ->where('organization.sync_status', OrganizationSyncStatus::Failed->value)
-                ->where('organization.last_sync_error', 'Yandex Maps blocked the parser request')
+                ->where('organization.last_sync_error', 'Yandex Maps temporarily limited synchronization. Next retry is scheduled after 2026-06-18T20:00:00+00:00.')
                 ->where('reviews.meta.total', 5));
     }
 }

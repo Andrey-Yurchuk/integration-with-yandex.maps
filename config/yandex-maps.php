@@ -24,4 +24,16 @@ return [
         'page_times' => (int) env('YANDEX_MAPS_PAGE_RETRY_TIMES', 2),
         'page_sleep_ms' => (int) env('YANDEX_MAPS_PAGE_RETRY_SLEEP_MS', 500),
     ],
+
+    'blocked_retry' => [
+        'max_attempts' => (int) env('YANDEX_MAPS_BLOCKED_RETRY_MAX_ATTEMPTS', 5),
+        'jitter_percent' => (int) env('YANDEX_MAPS_BLOCKED_RETRY_JITTER_PERCENT', 10),
+        'delays_minutes' => [15, 60, 360, 1440],
+        'command_limit' => (int) env('YANDEX_MAPS_BLOCKED_RETRY_COMMAND_LIMIT', 10),
+        'circuit_breaker' => [
+            'threshold' => (int) env('YANDEX_MAPS_BLOCKED_RETRY_CIRCUIT_THRESHOLD', 10),
+            'window_minutes' => (int) env('YANDEX_MAPS_BLOCKED_RETRY_CIRCUIT_WINDOW_MINUTES', 5),
+            'cooldown_minutes' => (int) env('YANDEX_MAPS_BLOCKED_RETRY_CIRCUIT_COOLDOWN_MINUTES', 30),
+        ],
+    ],
 ];
