@@ -40,13 +40,13 @@ final class OrganizationResourceTest extends TestCase
         $organization = new Organization([
             'source_url' => 'https://yandex.ru/maps/org/test/1/',
             'sync_status' => OrganizationSyncStatus::Failed,
-            'last_sync_error' => 'Yandex Maps blocked the parser request',
+            'last_sync_error' => 'Yandex Maps temporarily limited synchronization. Next retry is scheduled after 2026-06-18T20:00:00+00:00.',
         ]);
 
         $payload = OrganizationResource::make($organization)->resolve(new Request);
 
         $this->assertSame('failed', $payload['sync_status']);
-        $this->assertSame('Yandex Maps blocked the parser request', $payload['last_sync_error']);
+        $this->assertSame('Yandex Maps temporarily limited synchronization. Next retry is scheduled after 2026-06-18T20:00:00+00:00.', $payload['last_sync_error']);
     }
 
     public function test_does_not_expose_internal_fields(): void
@@ -71,7 +71,7 @@ final class OrganizationResourceTest extends TestCase
         $organization = new Organization([
             'source_url' => 'https://yandex.ru/maps/org/test/1/',
             'sync_status' => OrganizationSyncStatus::Failed,
-            'last_sync_error' => 'Yandex Maps blocked the parser request',
+            'last_sync_error' => 'Yandex Maps temporarily limited synchronization. Next retry is scheduled after 2026-06-18T20:00:00+00:00.',
             'blocked_attempts' => 3,
             'blocked_until' => $blockedUntil,
         ]);

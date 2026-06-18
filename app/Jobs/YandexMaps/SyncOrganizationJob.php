@@ -248,16 +248,20 @@ final class SyncOrganizationJob implements ShouldQueue
                     : null;
             }
 
+            $message = $exception instanceof BlockedException
+                ? $this->blockedSyncMessage($organization)
+                : $this->errorMessage($exception);
+
             $syncRuns->markFailed(
                 $syncRun,
                 $this->errorType($exception),
-                $this->errorMessage($exception),
+                $message,
                 $meta,
             );
 
             $organizations->markFailed(
                 $organization,
-                $this->errorMessage($exception),
+                $message,
             );
         });
     }
@@ -299,6 +303,13 @@ final class SyncOrganizationJob implements ShouldQueue
         }
 
         return 'Organization synchronization failed unexpectedly';
+    }
+
+    private function blockedSyncMessage(Organization $organization): string
+    {
+        $retryAt = $organization->blocked_until?->toIso8601String() ?? 'the scheduled cooldown';
+
+        return "Yandex Maps temporarily limited synchronization. Next retry is scheduled after {$retryAt}.";
     }
 
     private function failedErrorType(?Throwable $exception): string

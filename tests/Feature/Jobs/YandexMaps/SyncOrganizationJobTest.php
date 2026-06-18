@@ -128,7 +128,7 @@ final class SyncOrganizationJobTest extends TestCase
             'blocked' => [
                 new BlockedException('Yandex Maps blocked the parser request'),
                 'blocked',
-                'Yandex Maps blocked the parser request',
+                'blocked sync friendly message',
             ],
             'changed schema' => [
                 new ChangedSchemaException('Yandex Maps page state is missing or has an unexpected format'),
@@ -161,9 +161,16 @@ final class SyncOrganizationJobTest extends TestCase
             ->firstOrFail();
 
         $this->assertSame(OrganizationSyncStatus::Failed, $organization->sync_status);
-        $this->assertSame($message, $organization->last_sync_error);
         $this->assertSame(OrganizationSyncStatus::Failed, $syncRun->status);
         $this->assertSame($errorType, $syncRun->error_type);
+
+        if ($exception instanceof BlockedException) {
+            $message = $this->expectedBlockedSyncMessage($organization);
+
+            $this->assertStringNotContainsString('blocked the parser request', $organization->last_sync_error);
+        }
+
+        $this->assertSame($message, $organization->last_sync_error);
         $this->assertSame($message, $syncRun->error_message);
         $this->assertSame($exception::class, $syncRun->meta['exception'] ?? null);
     }
@@ -414,7 +421,8 @@ final class SyncOrganizationJobTest extends TestCase
             ->firstOrFail();
 
         $this->assertSame(OrganizationSyncStatus::Failed, $organization->sync_status);
-        $this->assertSame('Yandex Maps blocked the parser request', $organization->last_sync_error);
+        $this->assertSame($this->expectedBlockedSyncMessage($organization), $organization->last_sync_error);
+        $this->assertStringNotContainsString('blocked the parser request', $organization->last_sync_error);
         $this->assertSame(1, $organization->blocked_attempts);
         $this->assertNotNull($organization->blocked_until);
         $this->assertTrue($organization->blocked_until->isFuture());
@@ -516,6 +524,13 @@ final class SyncOrganizationJobTest extends TestCase
         $this->assertArrayNotHasKey('fallback_strategy', $syncRun->meta);
         $this->assertArrayNotHasKey('blocked_attempts', $syncRun->meta);
         $this->assertArrayNotHasKey('blocked_until', $syncRun->meta);
+    }
+
+    private function expectedBlockedSyncMessage(Organization $organization): string
+    {
+        $retryAt = $organization->blocked_until?->toIso8601String() ?? 'the scheduled cooldown';
+
+        return "Yandex Maps temporarily limited synchronization. Next retry is scheduled after {$retryAt}.";
     }
 
     private function runJob(Organization $organization, Parser $parser): void
